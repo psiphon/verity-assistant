@@ -23,6 +23,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      # Fails the build on a known-vulnerable *runtime* dependency. Dev-only
-      # advisories (e.g. build tooling) are reported but don't block.
-      - run: npm audit --omit=dev --audit-level=high
+      # Fails on any moderate+ advisory except those allowlisted (with a
+      # documented reason) in audit-ci.jsonc.
+      - run: npx audit-ci --config ./audit-ci.jsonc
