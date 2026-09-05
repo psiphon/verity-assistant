@@ -51,7 +51,7 @@ vi.mock('./agent/loop', async (importOriginal) => {
   return { ...actual, runAgentTurn, buildSystemPrompt }
 })
 
-import { BrowserWindow, ipcMain, powerMonitor, shell } from 'electron'
+import { BrowserWindow, ipcMain, powerMonitor, safeStorage, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AppSettings } from '@shared/types'
 import { STUCK_FALLBACK_TEXT } from './agent/loop'
@@ -211,6 +211,29 @@ describe('chat:send', () => {
     ])
   })
 
+  it('rejects a second send while a turn is already in flight (no history race)', async () => {
+    let release: (v: { text: string; history: unknown[] }) => void = () => {}
+    runAgentTurn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        })
+    )
+    const handler = getHandleHandler(IPC.chatSend)
+    const first = handler(fakeEvent(), 'one')
+    await handler(fakeEvent(), 'two')
+
+    expect(runAgentTurn).toHaveBeenCalledTimes(1)
+    const win = BrowserWindowMock.instances[0]
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      IPC.chatError,
+      expect.stringContaining('previous message')
+    )
+
+    release({ text: 'done', history: [] })
+    await first
+  })
+
   it('sends chat:error and still clears thinking when the turn throws', async () => {
     runAgentTurn.mockRejectedValueOnce(new Error('provider exploded'))
     const handler = getHandleHandler(IPC.chatSend)
@@ -253,6 +276,47 @@ describe('settings:set', () => {
     expect(McpManagerMock.instances[0].connectAll).toHaveBeenCalledWith(newSettings.mcpServers)
     const win = BrowserWindowMock.instances[0]
     expect(win.webContents.send).toHaveBeenCalledWith(IPC.mcpStatuses, expect.anything())
+  })
+
+  it('rejects a structurally malformed payload without persisting it', async () => {
+    setStoreSettings({ activeProvider: 'anthropic' })
+    const handler = getHandleHandler(IPC.settingsSet)
+    await handler(fakeEvent(), { activeProvider: 'openai' }) // no providers/mcpServers
+    expect(settingsStore.store.activeProvider).toBe('anthropic')
+  })
+
+  it('stores provider API keys encrypted at rest and hands the renderer plaintext back', async () => {
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true)
+    vi.mocked(safeStorage.encryptString).mockImplementation((s: string) =>
+      Buffer.from(`ROT:${s}`, 'utf8')
+    )
+    vi.mocked(safeStorage.decryptString).mockImplementation((b: Buffer) =>
+      b.toString('utf8').replace(/^ROT:/, '')
+    )
+    try {
+      const set = getHandleHandler(IPC.settingsSet)
+      await set(
+        fakeEvent(),
+        baseSettings({
+          providers: {
+            anthropic: { apiKey: 'sk-live-secret', baseUrl: '', model: '' },
+            openai: { apiKey: '', baseUrl: '', model: '' },
+            ollama: { apiKey: '', baseUrl: '', model: '' }
+          }
+        })
+      )
+
+      const persisted = settingsStore.store.providers.anthropic.apiKey
+      expect(persisted).not.toContain('sk-live-secret')
+      expect(persisted.startsWith('enc:v1:')).toBe(true)
+
+      const got = getHandleHandler(IPC.settingsGet)() as AppSettings
+      expect(got.providers.anthropic.apiKey).toBe('sk-live-secret')
+    } finally {
+      vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(false)
+      vi.mocked(safeStorage.encryptString).mockImplementation((s: string) => Buffer.from(s, 'utf8'))
+      vi.mocked(safeStorage.decryptString).mockImplementation((b: Buffer) => b.toString('utf8'))
+    }
   })
 })
 
@@ -368,6 +432,23 @@ describe('ambient check-ins', () => {
     startAmbientTimer()
 
     await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(runAgentTurn).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it('clamps a non-finite interval instead of hot-looping LLM calls', async () => {
+    setStoreSettings({
+      ambientEnabled: true,
+      ambientMinMinutes: NaN as unknown as number,
+      ambientMaxMinutes: NaN as unknown as number
+    })
+    runAgentTurn.mockResolvedValue({ text: '(nothing)', history: [] })
+    startAmbientTimer()
+
+    // A NaN interval used to become setTimeout(NaN) -> fires immediately and
+    // repeatedly. Clamped to the >=1min floor, nothing should fire in 59s.
+    await vi.advanceTimersByTimeAsync(59_000)
     expect(runAgentTurn).not.toHaveBeenCalled()
 
     vi.useRealTimers()

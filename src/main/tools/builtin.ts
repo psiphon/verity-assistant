@@ -1,13 +1,43 @@
 import { clipboard, powerMonitor, shell, Notification } from 'electron'
 import os from 'node:os'
+import path from 'node:path'
 import type { ToolDefinition } from '../llm/types'
 import { adjustRapport } from '../rapport'
 import { saveMemory, searchMemories } from '../memory'
 import { filesystemToolDefinitions, callFilesystemTool } from './filesystem'
 import { desktopToolDefinitions, callDesktopTool } from './desktop'
 import type { DesktopToolContext } from './desktop'
+import { markUntrusted } from './untrusted'
 
 export const SFX_NAMES = ['chime', 'glitch', 'hum', 'stinger'] as const
+
+// Extensions shell.openPath would *execute* rather than open in a viewer.
+const EXECUTABLE_EXTENSIONS = new Set([
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.com',
+  '.scr',
+  '.ps1',
+  '.psm1',
+  '.msi',
+  '.msp',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.jse',
+  '.wsf',
+  '.wsh',
+  '.hta',
+  '.cpl',
+  '.lnk',
+  '.pif',
+  '.reg',
+  '.jar',
+  '.app',
+  '.command',
+  '.sh'
+])
 
 export interface BuiltinToolContext extends DesktopToolContext {
   playSound: (name: (typeof SFX_NAMES)[number]) => void
@@ -165,7 +195,7 @@ export async function callBuiltinTool(
     }
     case 'get_clipboard_text': {
       const text = clipboard.readText()
-      return text ? text : '(clipboard is empty or not text)'
+      return text ? markUntrusted(text) : '(clipboard is empty or not text)'
     }
     case 'get_idle_time':
       return `${powerMonitor.getSystemIdleTime()} seconds`
@@ -184,10 +214,21 @@ export async function callBuiltinTool(
       return `Opened ${parsed.toString()}`
     }
     case 'open_path': {
-      const path = String(input.path ?? '')
-      if (!path) return 'path is required'
-      const error = await shell.openPath(path)
-      return error ? `Failed to open: ${error}` : `Opened ${path}`
+      const target = String(input.path ?? '')
+      if (!target) return 'path is required'
+      // shell.openPath is ShellExecute on Windows - handing it an .exe/.bat/
+      // .lnk or a UNC path is code execution, not "open a document". Refuse
+      // those outright: this tool exists to reveal a folder or open a
+      // document in its default app, nothing more.
+      if (target.startsWith('\\\\') || target.startsWith('//')) {
+        return 'Refusing to open a UNC/network path.'
+      }
+      const ext = path.extname(target).toLowerCase()
+      if (EXECUTABLE_EXTENSIONS.has(ext)) {
+        return `Refusing to open ${target} - executable/script files aren't opened this way.`
+      }
+      const error = await shell.openPath(target)
+      return error ? `Failed to open: ${error}` : `Opened ${target}`
     }
     case 'show_notification': {
       const title = String(input.title ?? 'Verity')

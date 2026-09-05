@@ -73,18 +73,28 @@ describe('logger', () => {
     expect(typeof lines[0].t).toBe('string')
   })
 
-  it('serializes an Error with name/message/stack plus any extra enumerable properties', () => {
+  it('serializes an Error to an allowlist of diagnostic fields only', () => {
     initLogger()
-    const err = new Error('api failed') as Error & { status: number }
+    const err = new Error('api failed') as Error & {
+      status: number
+      request_id: string
+      headers: Record<string, string>
+    }
     err.status = 429
+    // Fields an SDK error can carry that must NOT reach the log file.
+    err.request_id = 'req_secret'
+    err.headers = { authorization: 'Bearer sk-should-never-be-logged' }
     log.error('llm', 'request failed', err)
 
     const lines = readLines(getLogPath())
-    const data = lines[1].data as { name: string; message: string; stack: string; status: number }
+    const data = lines[1].data as Record<string, unknown>
     expect(data.name).toBe('Error')
     expect(data.message).toBe('api failed')
     expect(data.status).toBe(429)
     expect(typeof data.stack).toBe('string')
+    expect(data.request_id).toBeUndefined()
+    expect(data.headers).toBeUndefined()
+    expect(JSON.stringify(lines[1])).not.toContain('sk-should-never-be-logged')
   })
 
   it('passes non-Error data through unchanged', () => {

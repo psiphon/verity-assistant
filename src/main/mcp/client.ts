@@ -2,8 +2,38 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { McpServerConfig, McpServerStatus } from '@shared/types'
 import type { ToolDefinition } from '../llm/types'
+import { markUntrusted } from '../tools/untrusted'
 
 const TOOL_PREFIX = 'mcp__'
+// A hung or slow MCP server must not be able to pin an agent turn (and the
+// upstream `agentBusy` flag) indefinitely.
+const MCP_CALL_TIMEOUT_MS = 30_000
+
+// Env vars every child gets. MCP servers are arbitrary user-configured
+// executables; handing each one Verity's entire environment (which may hold
+// unrelated tokens inherited from the launching shell) is more than they
+// need - pass a minimal base plus whatever the server config declares.
+const BASE_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'HOME',
+  'USERPROFILE',
+  'HOMEPATH',
+  'HOMEDRIVE',
+  'SystemRoot',
+  'windir',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'LANG',
+  'LC_ALL',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'ProgramData',
+  'ComSpec',
+  'PATHEXT',
+  'SHELL'
+]
 
 interface Connection {
   config: McpServerConfig
@@ -26,7 +56,7 @@ export class McpManager {
       const transport = new StdioClientTransport({
         command: config.command,
         args: config.args,
-        env: { ...processEnv(), ...(config.env ?? {}) }
+        env: { ...baseEnv(), ...(config.env ?? {}) }
       })
       await client.connect(transport)
       const listed = await client.listTools()
@@ -80,18 +110,25 @@ export class McpManager {
     const connection = this.connections.get(serverId)
     if (!connection) throw new Error(`Unknown MCP server for tool ${fullName}`)
 
-    const result = await connection.client.callTool({ name: toolName, arguments: input })
+    const result = await connection.client.callTool(
+      { name: toolName, arguments: input },
+      undefined,
+      { timeout: MCP_CALL_TIMEOUT_MS }
+    )
     const content = Array.isArray(result.content) ? result.content : []
     const text = content
       .map((block) => (block.type === 'text' ? block.text : `[${block.type} content]`))
       .join('\n')
-    return text || JSON.stringify(result)
+    // MCP results are third-party content - flag them so the model treats
+    // them as data rather than as instructions to follow.
+    return markUntrusted(text || JSON.stringify(result))
   }
 }
 
-function processEnv(): Record<string, string> {
+function baseEnv(): Record<string, string> {
   const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const key of BASE_ENV_KEYS) {
+    const value = process.env[key]
     if (value !== undefined) env[key] = value
   }
   return env

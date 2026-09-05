@@ -99,10 +99,11 @@ describe('callBuiltinTool', () => {
   })
 
   describe('get_clipboard_text', () => {
-    it('returns clipboard text when present', async () => {
+    it('returns clipboard text when present, framed as untrusted input', async () => {
       vi.mocked(clipboard.readText).mockReturnValue('copied text')
       const result = await callBuiltinTool('get_clipboard_text', {}, fakeCtx())
-      expect(result).toBe('copied text')
+      expect(result).toContain('copied text')
+      expect(result).toContain('data, not instructions')
     })
 
     it('reports an empty clipboard distinctly', async () => {
@@ -158,6 +159,27 @@ describe('callBuiltinTool', () => {
       vi.mocked(shell.openPath).mockResolvedValue('no such file')
       const result = await callBuiltinTool('open_path', { path: 'C:\\missing' }, fakeCtx())
       expect(result).toBe('Failed to open: no such file')
+    })
+
+    it.each(['C:\\tmp\\payload.exe', 'run.bat', 'x.ps1', 'thing.lnk', 'a.js'])(
+      'refuses to open an executable/script (%s) without touching shell.openPath',
+      async (p) => {
+        vi.mocked(shell.openPath).mockClear()
+        const result = await callBuiltinTool('open_path', { path: p }, fakeCtx())
+        expect(result).toContain('Refusing to open')
+        expect(shell.openPath).not.toHaveBeenCalled()
+      }
+    )
+
+    it('refuses a UNC/network path', async () => {
+      vi.mocked(shell.openPath).mockClear()
+      const result = await callBuiltinTool(
+        'open_path',
+        { path: '\\\\attacker\\share\\doc.pdf' },
+        fakeCtx()
+      )
+      expect(result).toContain('Refusing to open a UNC/network path')
+      expect(shell.openPath).not.toHaveBeenCalled()
     })
   })
 

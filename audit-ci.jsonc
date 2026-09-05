@@ -1,0 +1,14 @@
+{
+  // Fail CI on any moderate-or-higher advisory, except the ones explicitly
+  // allowlisted below (each with a reason and a revisit condition).
+  "moderate": true,
+  "allowlist": [
+    // extract-zip: unvalidated symlink path traversal (GHSA-jmr9-qjv8-65gv).
+    // Reachable only through `electron`, a devDependency, where extract-zip
+    // is used at install time to unpack the downloaded Electron binary - it
+    // is never part of the packaged app. No patched extract-zip exists; the
+    // upstream fix is electron >= 44 (a 5-major bump). Revisit when electron
+    // is upgraded. https://github.com/advisories/GHSA-jmr9-qjv8-65gv
+    "GHSA-jmr9-qjv8-65gv"
+  ]
+}

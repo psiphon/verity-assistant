@@ -96,6 +96,31 @@ describe('read_text_file', () => {
     expect(result).toContain('Refusing to read')
   })
 
+  it.each([
+    'Library/Keychains/login.keychain-db',
+    'project/server.pem',
+    '.mozilla/firefox/abc/logins.json',
+    'work/.kube/config',
+    'app/wp-config.php',
+    'backups/.aws/old-credentials'
+  ])('refuses %s as credential-shaped', async (rel) => {
+    const file = await write(rel, 'secret')
+    const result = (await callFilesystemTool('read_text_file', { path: file })) as string
+    expect(result).toContain('Refusing to read')
+  })
+
+  it('refuses a symlink that resolves to a sensitive file', async () => {
+    const realSecret = await write('.ssh/id_ed25519', 'KEY')
+    const link = path.join(sandbox, 'notes-pointer.txt')
+    try {
+      await fsp.symlink(realSecret, link)
+    } catch {
+      return // symlink creation not permitted (e.g. Windows without privilege) - skip
+    }
+    const result = (await callFilesystemTool('read_text_file', { path: link })) as string
+    expect(result).toContain('Refusing to read')
+  })
+
   it('redirects to list_directory for a directory path', async () => {
     await write('somedir/inner.txt', 'x')
     const result = (await callFilesystemTool('read_text_file', {

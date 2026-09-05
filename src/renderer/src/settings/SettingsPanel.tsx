@@ -347,6 +347,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
       </section>
 
       <section>
+        <label>Privacy</label>
+        <p className="hint">
+          API keys and MCP server secrets are stored encrypted via your OS keychain. The weather
+          tool contacts open-meteo.com (and ipapi.co for approximate IP location when you don&apos;t
+          name a city). The file tools (read/search) send whatever they read to your configured LLM
+          provider, and are blocked from unprompted &quot;ambient&quot; check-ins.
+        </p>
+      </section>
+
+      <section>
         <div className="settings-row-header">
           <label>Debug Log</label>
           <button onClick={() => window.verity.logs.openFolder()}>Open Log Folder</button>

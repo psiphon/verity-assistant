@@ -47,7 +47,7 @@ function createWindow(): BrowserWindow {
     icon: process.platform === 'linux' ? icon : undefined,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -63,10 +63,21 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  // Only ever hand http(s) URLs to the OS, and never let the window itself
+  // navigate away from the bundled first-party UI - a renderer bug (or a
+  // future embedded remote resource) must not be able to turn either into a
+  // file://, UNC, or custom-protocol-handler open.
   win.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const { protocol } = new URL(details.url)
+      if (protocol === 'http:' || protocol === 'https:') shell.openExternal(details.url)
+    } catch {
+      // not a parseable URL - ignore
+    }
     return { action: 'deny' }
   })
+
+  win.webContents.on('will-navigate', (event) => event.preventDefault())
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

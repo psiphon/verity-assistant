@@ -41,22 +41,88 @@ const SKIP_DIR_NAMES = new Set([
 const SENSITIVE_PATH_PATTERNS = [
   '.ssh',
   '.aws',
+  '.azure',
   '.gnupg',
+  '.kube',
+  '.docker/config',
+  '.docker\\config',
+  'gcloud',
+  '.terraform',
+  'terraform.tfstate',
   'id_rsa',
   'id_ed25519',
-  '.pem',
+  'id_ecdsa',
+  'id_dsa',
+  'authorized_keys',
+  'known_hosts',
   'credentials',
+  'secring',
   '.npmrc',
+  '.pypirc',
+  '.netrc',
+  '.pgpass',
   '.git-credentials',
   '.env',
+  'wp-config.php',
   'login data',
+  'logins.json',
+  'key3.db',
+  'key4.db',
+  'cert9.db',
+  'signons.sqlite',
   'cookies',
-  'local state'
+  'local state',
+  'wallet.dat',
+  'keystore'
 ]
+
+// Individual path segments that are off-limits no matter where they sit -
+// catches e.g. a symlinked or unusually-nested "~/backup/.ssh" that the
+// substring list above might still let through with the wrong separator.
+const SENSITIVE_PATH_SEGMENTS = new Set([
+  '.ssh',
+  '.aws',
+  '.azure',
+  '.gnupg',
+  '.gpg',
+  '.kube',
+  '.password-store',
+  'keychains'
+])
+
+// File extensions that are almost always private key / credential material.
+const SENSITIVE_EXTENSIONS = new Set([
+  '.pem',
+  '.key',
+  '.pfx',
+  '.p12',
+  '.keystore',
+  '.jks',
+  '.ppk',
+  '.kdbx',
+  '.ovpn',
+  '.asc',
+  '.gpg'
+])
 
 function isSensitivePath(p: string): boolean {
   const lower = p.toLowerCase()
-  return SENSITIVE_PATH_PATTERNS.some((pattern) => lower.includes(pattern))
+  if (SENSITIVE_PATH_PATTERNS.some((pattern) => lower.includes(pattern))) return true
+  if (SENSITIVE_EXTENSIONS.has(path.extname(lower))) return true
+  const segments = lower.split(/[\\/]+/)
+  return segments.some((seg) => SENSITIVE_PATH_SEGMENTS.has(seg))
+}
+
+/** Resolve symlinks before a sensitive-path check so a benign-looking link
+ * (`~/notes/pwd` -> `~/.ssh/id_rsa`) can't smuggle past the denylist. Falls
+ * back to the literal path if it can't be resolved (e.g. doesn't exist yet -
+ * the caller's own stat/read will then surface the real error). */
+async function realPathOrSelf(p: string): Promise<string> {
+  try {
+    return await fsp.realpath(p)
+  } catch {
+    return p
+  }
 }
 
 function resolveUserPath(input: string | undefined): string {
@@ -187,7 +253,7 @@ async function listDirectory(pathInput: string | undefined): Promise<string> {
 
 async function readTextFile(pathInput: string): Promise<string> {
   const filePath = resolveUserPath(pathInput)
-  if (isSensitivePath(filePath)) {
+  if (isSensitivePath(filePath) || isSensitivePath(await realPathOrSelf(filePath))) {
     return `Refusing to read ${filePath} - looks like a credential or key file.`
   }
   let stat: Awaited<ReturnType<typeof fsp.stat>>
@@ -261,6 +327,7 @@ async function searchFileContents(
 
   outer: for await (const node of walk(root, 0, budget)) {
     if (node.isDirectory) continue
+    if (isSensitivePath(await realPathOrSelf(node.fullPath))) continue
     let stat: Awaited<ReturnType<typeof fsp.stat>>
     try {
       stat = await fsp.stat(node.fullPath)

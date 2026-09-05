@@ -87,6 +87,15 @@ export const powerMonitor = {
   getSystemIdleTime: vi.fn(() => 0)
 }
 
+// Default: encryption unavailable, so encrypt/decrypt are identity and tests
+// see plaintext secrets round-trip unchanged. A test can flip
+// isEncryptionAvailable to true and stub the two string methods.
+export const safeStorage = {
+  isEncryptionAvailable: vi.fn(() => false),
+  encryptString: vi.fn((s: string) => Buffer.from(s, 'utf8')),
+  decryptString: vi.fn((b: Buffer) => b.toString('utf8'))
+}
+
 export class Notification {
   static isSupported = vi.fn(() => true)
   static instances: Notification[] = []
