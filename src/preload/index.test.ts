@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron')
-vi.mock('@electron-toolkit/preload', () => ({ electronAPI: { fake: true } }))
 
 import { IPC } from '@shared/ipc'
 import type { VerityApi } from './index'
@@ -10,10 +9,10 @@ import type * as ElectronModule from 'electron'
 const originalContextIsolated = process.contextIsolated
 
 // tsconfig.node.json (which type-checks this file) doesn't pick up the
-// global Window.electron/verity augmentation from index.d.ts the way
-// tsconfig.web.json does for renderer code - a narrow cast stands in for it.
-function windowGlobals(): { electron: unknown; verity: VerityApi } {
-  return window as unknown as { electron: unknown; verity: VerityApi }
+// global Window.verity augmentation from index.d.ts the way tsconfig.web.json
+// does for renderer code - a narrow cast stands in for it.
+function windowGlobals(): { verity: VerityApi } {
+  return window as unknown as { verity: VerityApi }
 }
 
 function setContextIsolated(value: boolean | undefined): void {
@@ -29,8 +28,6 @@ async function loadPreload(): Promise<typeof ElectronModule> {
   vi.resetModules()
   // @ts-expect-error test-only cleanup between reloads of the preload module
   delete window.verity
-  // @ts-expect-error test-only cleanup between reloads of the preload module
-  delete window.electron
   await import('./index')
   return import('electron')
 }
@@ -41,20 +38,19 @@ afterEach(() => {
 })
 
 describe('preload bootstrap', () => {
-  it('exposes electron/verity via contextBridge when context-isolated', async () => {
+  it('exposes verity via contextBridge when context-isolated', async () => {
     setContextIsolated(true)
     const { contextBridge } = await loadPreload()
 
-    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledWith('electron', { fake: true })
     expect(contextBridge.exposeInMainWorld).toHaveBeenCalledWith('verity', expect.any(Object))
+    expect(contextBridge.exposeInMainWorld).not.toHaveBeenCalledWith('electron', expect.anything())
   })
 
-  it('assigns window.electron/window.verity directly when not isolated', async () => {
+  it('assigns window.verity directly when not isolated', async () => {
     setContextIsolated(false)
     const { contextBridge } = await loadPreload()
 
     expect(contextBridge.exposeInMainWorld).not.toHaveBeenCalled()
-    expect(windowGlobals().electron).toEqual({ fake: true })
     expect(windowGlobals().verity).toBeTruthy()
   })
 

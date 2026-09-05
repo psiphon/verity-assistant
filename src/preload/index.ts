@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '@shared/ipc'
 import type { AppSettings, McpServerStatus, RapportState, MemoryEntry } from '@shared/types'
 
@@ -84,16 +83,17 @@ const api = {
 
 export type VerityApi = typeof api
 
+// Sandbox is enabled (see main/index.ts webPreferences), so this preload
+// must stay self-contained: it may only pull in `electron` built-ins and
+// local modules, never an external npm package (those can't be required in a
+// sandboxed preload).
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('verity', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.verity = api
 }
