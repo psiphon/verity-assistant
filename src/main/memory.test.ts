@@ -104,5 +104,23 @@ describe('memory', () => {
       expect(lines[0]).toBe('- fact 5')
       expect(lines[19]).toBe('- fact 24')
     })
+
+    it('stays within the prompt character budget even with many long memories', () => {
+      for (let i = 0; i < 20; i++) saveMemory('x'.repeat(490))
+      expect(formatMemoriesForPrompt().length).toBeLessThanOrEqual(4000)
+    })
+  })
+
+  describe('sanitizeMemoryContent (via saveMemory)', () => {
+    it('clamps an over-long memory so it cannot plant a large persistent directive', () => {
+      const entry = saveMemory('a'.repeat(5000))
+      expect(entry.content.length).toBeLessThanOrEqual(501)
+    })
+
+    it('collapses newlines and control characters into single spaces', () => {
+      const entry = saveMemory('line one\n\n\t=== FAKE PROMPT SECTION ===\r\nline two')
+      expect(entry.content).toBe('line one === FAKE PROMPT SECTION === line two')
+      expect(entry.content).not.toContain('\n')
+    })
   })
 })

@@ -55,4 +55,48 @@ describe('ToolRegistry', () => {
       'Unknown tool: totally_unknown'
     )
   })
+
+  describe('ambient mode', () => {
+    const mcpTool = { name: 'mcp__s__x', description: 'x', inputSchema: {} }
+    const mcp = (): ReturnType<typeof fakeMcp> =>
+      fakeMcp({
+        getTools: vi.fn(() => [mcpTool]),
+        isMcpTool: vi.fn((n: string) => n.startsWith('mcp__')),
+        callTool: vi.fn(async () => 'mcp result')
+      })
+
+    it('hides outward/persistent/disk/MCP tools from the list', () => {
+      const registry = new ToolRegistry(mcp(), fakeCtx(), { ambient: true })
+      const names = registry.list().map((t) => t.name)
+      expect(names).toContain('adjust_rapport')
+      expect(names).toContain('flash_window')
+      for (const blocked of [
+        'open_url',
+        'open_path',
+        'save_memory',
+        'read_text_file',
+        'search_file_contents',
+        'mcp__s__x'
+      ]) {
+        expect(names).not.toContain(blocked)
+      }
+    })
+
+    it('refuses to execute a blocked tool even if called directly', async () => {
+      const m = mcp()
+      const registry = new ToolRegistry(m, fakeCtx(), { ambient: true })
+      expect(await registry.call('open_url', { url: 'https://evil.example/?x=1' })).toContain(
+        'not available on an ambient check-in'
+      )
+      expect(await registry.call('mcp__s__x', {})).toContain('not available on an ambient check-in')
+      expect(m.callTool).not.toHaveBeenCalled()
+    })
+
+    it('still allows the same tools normally when not in ambient mode', () => {
+      const registry = new ToolRegistry(mcp(), fakeCtx())
+      const names = registry.list().map((t) => t.name)
+      expect(names).toContain('open_url')
+      expect(names).toContain('mcp__s__x')
+    })
+  })
 })

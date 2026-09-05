@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, shell, powerMonitor } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AppSettings } from '@shared/types'
 import { settingsStore } from './store'
+import { decryptSettingsSecrets, encryptSettingsSecrets } from './secrets'
 import { createProvider } from './llm'
 import type { ChatMessage } from './llm/types'
 import { McpManager } from './mcp/client'
@@ -14,6 +15,30 @@ import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } fro
 
 const mcp = new McpManager()
 let history: ChatMessage[] = []
+// Conversation history is replayed in full on every turn, so it can't grow
+// without bound - past this many messages the oldest are dropped (never
+// splitting an assistant tool_use call from its tool results).
+const MAX_HISTORY_MESSAGES = 40
+
+function trimHistory(messages: ChatMessage[]): ChatMessage[] {
+  if (messages.length <= MAX_HISTORY_MESSAGES) return messages
+  let start = messages.length - MAX_HISTORY_MESSAGES
+  // Don't begin the kept slice on an orphaned tool result whose matching
+  // assistant tool_use call was just trimmed away.
+  while (start < messages.length && messages[start].role === 'tool') start++
+  return messages.slice(start)
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+// Persisted settings hold secret fields encrypted (see secrets.ts) - always
+// read them through this so callers get usable plaintext.
+function currentSettings(): AppSettings {
+  return decryptSettingsSecrets(settingsStore.store)
+}
 // Guards against an ambient check-in and a real user message both calling
 // runAgentTurn at once - both read/write the same `history` array, and
 // whichever finished last would silently clobber the other's turn from it.
@@ -31,7 +56,12 @@ const AMBIENT_MAX_TOOL_ITERATIONS = 3
 let ambientTimerHandle: ReturnType<typeof setTimeout> | null = null
 
 export async function initAgentBackend(): Promise<void> {
-  const settings = settingsStore.store
+  // Migrate any pre-existing plaintext secrets to encrypted-at-rest on first
+  // launch after upgrade (no-op once everything is already tagged, or if the
+  // platform has no safeStorage backend).
+  settingsStore.set(encryptSettingsSecrets(settingsStore.store))
+
+  const settings = currentSettings()
   log.info('mcp', `Connecting ${settings.mcpServers.length} configured MCP server(s)`)
   await mcp.connectAll(settings.mcpServers)
   logMcpStatuses()
@@ -89,13 +119,17 @@ export function registerIpcHandlers(): void {
     getWindow()?.webContents.send(IPC.rapportChanged, { value, tierLabel: getTier(value).label })
   })
 
-  ipcMain.handle(IPC.settingsGet, (): AppSettings => settingsStore.store)
+  ipcMain.handle(IPC.settingsGet, (): AppSettings => currentSettings())
 
   ipcMain.handle(IPC.settingsSet, async (_e, settings: AppSettings) => {
+    if (!isPlausibleSettings(settings)) {
+      log.error('settings', 'Rejected a malformed settings payload')
+      return
+    }
     log.info('settings', `Settings saved (provider=${settings.activeProvider})`)
-    settingsStore.set(settings)
+    settingsStore.set(encryptSettingsSecrets(settings))
     scheduleNextAmbientCheck()
-    await mcp.connectAll(settings.mcpServers)
+    await mcp.connectAll(currentSettings().mcpServers)
     logMcpStatuses()
     getWindow()?.webContents.send(IPC.mcpStatuses, mcp.getStatuses())
   })
@@ -104,15 +138,26 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.mcpReload, async () => {
     log.info('mcp', 'Manual MCP reload requested')
-    await mcp.connectAll(settingsStore.store.mcpServers)
+    await mcp.connectAll(currentSettings().mcpServers)
     logMcpStatuses()
     return mcp.getStatuses()
   })
 
   ipcMain.handle(IPC.chatSend, async (event, userText: string) => {
-    const settings = settingsStore.store
+    const settings = currentSettings()
     const providerSettings = settings.providers[settings.activeProvider]
     const win = BrowserWindow.fromWebContents(event.sender)
+
+    // One agent turn at a time - a second send (or an ambient tick) landing
+    // mid-turn would race on the shared `history` array and silently drop one
+    // turn's messages.
+    if (agentBusy) {
+      win?.webContents.send(
+        IPC.chatError,
+        'Still finishing the previous message - give it a moment.'
+      )
+      return
+    }
 
     log.info('chat', `User -> ${settings.activeProvider}: ${truncate(userText)}`)
     win?.webContents.send(IPC.chatThinking, true)
@@ -147,16 +192,16 @@ export function registerIpcHandlers(): void {
               log.info(
                 'tool',
                 `Fallback-parsed ${name} out of raw reply text (model isn't using real tool-calling)`,
-                input
+                { args: Object.keys(input) }
               )
             } else {
-              log.info('tool', `Calling ${name}`, input)
+              log.info('tool', `Calling ${name}`, { args: Object.keys(input) })
             }
             win?.webContents.send(IPC.chatToolCall, { name, input })
           }
         }
       )
-      history = newHistory
+      history = trimHistory(newHistory)
 
       log.info('chat', `${settings.activeProvider} -> assistant: ${truncate(text)}`)
       win?.webContents.send(IPC.chatMessage, text)
@@ -241,6 +286,27 @@ function truncate(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
+// Structural sanity check on a settings payload from the renderer before it's
+// persisted wholesale (which includes the MCP server list that gets spawned).
+// Not a full schema - just enough to reject an obviously wrong shape.
+function isPlausibleSettings(s: unknown): s is AppSettings {
+  if (typeof s !== 'object' || s === null) return false
+  const o = s as Record<string, unknown>
+  return (
+    typeof o.providers === 'object' &&
+    o.providers !== null &&
+    Array.isArray(o.mcpServers) &&
+    typeof o.activeProvider === 'string' &&
+    (o.mcpServers as unknown[]).every(
+      (m) =>
+        typeof m === 'object' &&
+        m !== null &&
+        typeof (m as Record<string, unknown>).command === 'string' &&
+        Array.isArray((m as Record<string, unknown>).args)
+    )
+  )
+}
+
 export function startAmbientTimer(): void {
   scheduleNextAmbientCheck()
 }
@@ -258,8 +324,14 @@ function scheduleNextAmbientCheck(): void {
     ambientTimerHandle = setTimeout(scheduleNextAmbientCheck, 60_000)
     return
   }
-  const minMs = Math.max(1, settings.ambientMinMinutes) * 60_000
-  const maxMs = Math.max(minMs, settings.ambientMaxMinutes * 60_000)
+  // Clamp both bounds to [1 min, 24 h] and coerce non-finite values (a
+  // cleared/garbled settings field) to the defaults - otherwise a NaN here
+  // becomes setTimeout(NaN), which fires immediately and turns ambient
+  // check-ins into a hot loop of paid LLM calls.
+  const minMinutes = Math.min(1440, Math.max(1, finiteOr(settings.ambientMinMinutes, 10)))
+  const maxMinutes = Math.min(1440, Math.max(minMinutes, finiteOr(settings.ambientMaxMinutes, 30)))
+  const minMs = minMinutes * 60_000
+  const maxMs = maxMinutes * 60_000
   const delay = minMs + Math.random() * (maxMs - minMs)
   ambientTimerHandle = setTimeout(runAmbientCheck, delay)
 }
@@ -275,7 +347,7 @@ async function runAmbientCheck(): Promise<void> {
 }
 
 async function doAmbientCheck(): Promise<void> {
-  const settings = settingsStore.store
+  const settings = currentSettings()
   if (!settings.ambientEnabled || agentBusy) return
   const win = getWindow()
   if (!win) return
@@ -292,7 +364,11 @@ async function doAmbientCheck(): Promise<void> {
       baseUrl: providerSettings.baseUrl || undefined,
       model: providerSettings.model || undefined
     })
-    const registry = new ToolRegistry(mcp, { playSound, flashWindow, flickerWindow })
+    const registry = new ToolRegistry(
+      mcp,
+      { playSound, flashWindow, flickerWindow },
+      { ambient: true }
+    )
     const rapport = getRapport()
     const tier = getTier(rapport)
     const system = buildSystemPrompt(
@@ -312,7 +388,7 @@ async function doAmbientCheck(): Promise<void> {
       system,
       {
         onToolCall: (name, input) => {
-          log.info('tool', `Ambient call: ${name}`, input)
+          log.info('tool', `Ambient call: ${name}`, { args: Object.keys(input) })
           win.webContents.send(IPC.chatToolCall, { name, input })
         }
       },
@@ -328,7 +404,7 @@ async function doAmbientCheck(): Promise<void> {
     // Only the turns where something actually happened join the real
     // conversation history - otherwise every silent no-op tick (the common
     // case) would pile up as clutter the model has to read back every turn.
-    history = newHistory
+    history = trimHistory(newHistory)
     log.info('ambient', `${settings.activeProvider} -> assistant (ambient): ${truncate(text)}`)
     win.webContents.send(IPC.chatMessage, text)
   } catch (err) {

@@ -59,12 +59,19 @@ function write(
   }
 }
 
+// SDK errors (Anthropic/OpenAI APIError) attach useful diagnostic fields, but
+// spreading the whole object also drags in request/response context that can
+// contain API keys or prompt content. Keep an explicit allowlist instead.
+const ERROR_FIELD_ALLOWLIST = ['name', 'message', 'stack', 'status', 'code', 'type']
+
 function serialize(data: unknown): unknown {
   if (data instanceof Error) {
-    // SDK errors (Anthropic/OpenAI APIError) attach extra fields like
-    // status/error/code beyond the standard Error shape - keep them.
-    const extra = { ...data } as Record<string, unknown>
-    return { name: data.name, message: data.message, stack: data.stack, ...extra }
+    const bag = data as unknown as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of ERROR_FIELD_ALLOWLIST) {
+      if (bag[key] !== undefined) out[key] = bag[key]
+    }
+    return out
   }
   return data
 }

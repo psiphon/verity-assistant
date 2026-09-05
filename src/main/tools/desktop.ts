@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { Notification } from 'electron'
 import type { ToolDefinition } from '../llm/types'
+import { log } from '../logger'
 
 const execFileAsync = promisify(execFile)
 const PS_TIMEOUT_MS = 5000
@@ -147,7 +148,8 @@ async function getBatteryStatus(): Promise<string> {
     return data.EstimatedChargeRemaining !== undefined
       ? `${data.EstimatedChargeRemaining}% battery, ${state}.`
       : `Battery status: ${state}.`
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'get_battery_status failed', err)
     return 'No battery detected - likely a desktop.'
   }
 }
@@ -170,7 +172,8 @@ $procId = 0
     const title = stdout.slice(sep + 1).trim()
     if (Number(pidStr) === process.pid) return "(you're currently focused on Verity itself)"
     return title || '(no window title available)'
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'get_active_window_title failed', err)
     return 'Could not determine the active window.'
   }
 }
@@ -182,7 +185,8 @@ async function listRunningApps(): Promise<string> {
       `Get-Process | Where-Object { $_.MainWindowTitle -ne '' -and $_.Id -ne ${process.pid} } | Select-Object -First 30 ProcessName, MainWindowTitle | ForEach-Object { "$($_.ProcessName): $($_.MainWindowTitle)" }`
     )
     return stdout || '(no other windowed apps found)'
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'list_running_apps failed', err)
     return 'Could not list running apps.'
   }
 }
@@ -202,7 +206,8 @@ for ($i = 0; $i -lt ${presses}; $i++) {
 }
 `)
     return action === 'mute' ? 'Toggled mute.' : `Nudged volume ${action} (${presses}x).`
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'set_system_volume failed', err)
     return 'Could not change the volume.'
   }
 }
@@ -222,7 +227,8 @@ $p = [System.Windows.Forms.Cursor]::Position
 [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(($p.X + ${dx}), ($p.Y + ${dy}))
 `)
     return `Nudged the cursor by (${dx}, ${dy}).`
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'cursor_nudge failed', err)
     return 'Could not move the cursor.'
   }
 }
@@ -247,6 +253,7 @@ async function resolveLocation(location: string | undefined): Promise<GeoResult 
     const res = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(location.trim())}`
     )
+    if (res.ok === false) return null
     const data = (await res.json()) as {
       results?: { latitude: number; longitude: number; name: string; country?: string }[]
     }
@@ -258,7 +265,10 @@ async function resolveLocation(location: string | undefined): Promise<GeoResult 
       label: [first.name, first.country].filter(Boolean).join(', ')
     }
   }
+  // No location given - this discloses the user's public IP to ipapi.co for
+  // approximate geolocation. Documented in Settings.
   const res = await fetch('https://ipapi.co/json/')
+  if (res.ok === false) return null
   const data = (await res.json()) as {
     latitude?: number
     longitude?: number
@@ -280,13 +290,15 @@ async function getWeather(locationInput: unknown): Promise<string> {
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`
     )
+    if (res.ok === false) return `Couldn't get a forecast for ${geo.label}.`
     const data = (await res.json()) as {
       current?: { temperature_2m: number; weather_code: number; wind_speed_10m: number }
     }
     if (!data.current) return `Couldn't get a forecast for ${geo.label}.`
     const desc = WEATHER_CODES[data.current.weather_code] ?? 'unknown conditions'
     return `${geo.label}: ${Math.round(data.current.temperature_2m)}°F, ${desc}, wind ${Math.round(data.current.wind_speed_10m)}mph.`
-  } catch {
+  } catch (err) {
+    log.warn('desktop', 'get_weather failed', err)
     return 'Could not fetch the weather right now.'
   }
 }

