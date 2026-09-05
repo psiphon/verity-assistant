@@ -40,3 +40,33 @@ export function extractFallbackToolCalls(
 
   return { cleanedText, calls }
 }
+
+/**
+ * Some models narrate a sound effect as a stage direction - `*glitch*`,
+ * `[glitch]` - instead of actually calling play_sound, the same way they'd
+ * write `*sighs*` in character-voice text. That reads the literal word
+ * "glitch" aloud via TTS and never plays anything. This scans a final reply
+ * for a known sound-effect name written that way, strips it from the visible
+ * text, and reports it so the caller can trigger the real sound instead.
+ */
+export function extractStageDirectionSounds(
+  text: string,
+  sfxNames: readonly string[]
+): { cleanedText: string; sounds: string[] } {
+  if (sfxNames.length === 0) return { cleanedText: text, sounds: [] }
+
+  const sounds: string[] = []
+  const namePattern = sfxNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const re = new RegExp(`[*_]\\s*(${namePattern})\\s*[*_]|[[(]\\s*(${namePattern})\\s*[\\])]`, 'gi')
+
+  const cleanedText = text
+    .replace(re, (_match, a?: string, b?: string) => {
+      sounds.push((a ?? b ?? '').toLowerCase())
+      return ''
+    })
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return { cleanedText, sounds }
+}

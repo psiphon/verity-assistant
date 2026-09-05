@@ -7,11 +7,24 @@ function getContext(): AudioContext {
   return ctx
 }
 
+/** Browsers (Electron included) create AudioContext in a "suspended" state
+ * until resumed from within a user gesture, and sounds scheduled while
+ * suspended never audibly play (no error, nothing - just silence). Tool-call
+ * sounds arrive asynchronously after the LLM round-trip, well outside the
+ * click/keydown that sent the message, so call this synchronously from
+ * within the actual gesture handler (e.g. the send button's onClick) to
+ * unlock playback before that reply comes back. */
+export function unlockAudio(): void {
+  const audio = getContext()
+  if (audio.state === 'suspended') void audio.resume()
+}
+
 /** All effects are synthesized (no audio files to ship/license) - short and
  * cheap, meant as punctuation for a reaction, not a music bed. */
 export function playSfx(name: SfxName): void {
   try {
     const audio = getContext()
+    if (audio.state === 'suspended') void audio.resume()
     const now = audio.currentTime
     switch (name) {
       case 'chime':

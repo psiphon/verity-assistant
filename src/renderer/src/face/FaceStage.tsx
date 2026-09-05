@@ -70,8 +70,15 @@ export function FaceStage({ state, rapport, onClick }: FaceStageProps): React.JS
       })
 
       function layout(t = 0): void {
-        const w = app.renderer.width / app.renderer.resolution
-        const h = app.renderer.height / app.renderer.resolution
+        // Deliberately read the container's own CSS size rather than
+        // deriving it from app.renderer.width/resolution - on a non-100%
+        // Windows display scale (verified at 150%), renderer.width already
+        // comes back as the logical/CSS size, not physical pixels as its
+        // docs imply, so dividing by resolution again silently shrank and
+        // mis-centered the sprite (visibly off-center, smaller) on any
+        // scaled monitor while looking correct at 100% scale.
+        const w = container.clientWidth
+        const h = container.clientHeight
         const bob = Math.sin(t * 1.6) * 4
         const speakingWobble = stateRef.current === 'talking' ? Math.sin(t * 14) * 0.03 : 0
         const fill = Math.min(w, h) * 0.9

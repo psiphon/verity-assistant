@@ -1,6 +1,7 @@
 import type { ChatMessage, LLMProvider } from '../llm/types'
 import type { ToolRegistry } from '../tools/registry'
-import { extractFallbackToolCalls } from './fallbackToolCalls'
+import { extractFallbackToolCalls, extractStageDirectionSounds } from './fallbackToolCalls'
+import { SFX_NAMES } from '../tools/builtin'
 
 const MAX_TOOL_ITERATIONS = 8
 
@@ -39,7 +40,7 @@ Call save_memory whenever you learn something genuinely worth remembering about 
 
 Other tools available: get_current_time, get_clipboard_text (read what the user has copied), get_idle_time (seconds since they last touched mouse/keyboard), open_url (opens a link in their browser), open_path (opens a file/folder), show_notification (native OS popup - use for something that genuinely deserves their attention right now), get_system_info (OS/hostname/uptime/memory). You may also have additional tools from connected MCP servers. Use any of these when they'd genuinely help - not to pad out a reply.
 
-Always call tools using your actual function/tool-calling mechanism, never by writing the call, its name, or its arguments out as text in your reply (e.g. never write something like "play_sound{"sound": "chime"}" or "+5 rapport" in the words you say back) - the user only ever hears the reply text itself, so any tool call that leaks into it will be read aloud verbatim.`
+Always call tools using your actual function/tool-calling mechanism, never by writing the call, its name, or its arguments out as text in your reply (e.g. never write something like "play_sound{"sound": "chime"}", "+5 rapport", or a stage direction like "*glitch*" in the words you say back) - the user only ever hears the reply text itself, so anything that leaks into it will be read aloud verbatim instead of actually happening.`
 
 export function buildSystemPrompt(
   customPersona: string,
@@ -76,10 +77,13 @@ export async function runAgentTurn(
     const result = await provider.chat({ system, messages, tools: toolDefs })
 
     if (result.toolCalls.length === 0) {
-      const { cleanedText, calls } = extractFallbackToolCalls(
+      const { cleanedText: afterCalls, calls } = extractFallbackToolCalls(
         result.text,
         toolDefs.map((t) => t.name)
       )
+      const { cleanedText, sounds } = extractStageDirectionSounds(afterCalls, SFX_NAMES)
+      for (const sound of sounds) calls.push({ name: 'play_sound', input: { sound } })
+
       for (const call of calls) {
         events.onToolCall?.(call.name, call.input, true)
         try {

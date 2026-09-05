@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import { unlockAudio } from '../audio/sfx'
 
 interface ChatInputProps {
   disabled: boolean
@@ -11,6 +12,8 @@ export function ChatInput({ disabled, onSend }: ChatInputProps): React.JSX.Eleme
 
   function submit(): void {
     if (!value.trim()) return
+    // Must happen synchronously inside this gesture - see unlockAudio's docs.
+    unlockAudio()
     onSend(value)
     setValue('')
   }

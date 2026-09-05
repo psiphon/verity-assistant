@@ -3,6 +3,7 @@ import { FaceStage } from './face/FaceStage'
 import { ChatInput } from './chat/ChatInput'
 import { useAssistant } from './chat/useAssistant'
 import { SettingsPanel } from './settings/SettingsPanel'
+import { unlockAudio } from './audio/sfx'
 
 function App(): React.JSX.Element {
   const { entries, faceState, rapport, thinking, activeTool, send } = useAssistant()
@@ -19,7 +20,14 @@ function App(): React.JSX.Element {
         <SettingsPanel onClose={() => setSettingsOpen(false)} />
       ) : (
         <>
-          <FaceStage state={faceState} rapport={rapport} onClick={() => setExpanded((v) => !v)} />
+          <FaceStage
+            state={faceState}
+            rapport={rapport}
+            onClick={() => {
+              unlockAudio()
+              setExpanded((v) => !v)
+            }}
+          />
 
           {/* Always mounted (space reserved) rather than conditionally
               rendered - toggling with display/mount would change the

@@ -4,7 +4,7 @@ import type { ToolDefinition } from '../llm/types'
 import { adjustRapport } from '../rapport'
 import { saveMemory, searchMemories } from '../memory'
 
-const SFX_NAMES = ['chime', 'glitch', 'hum', 'stinger'] as const
+export const SFX_NAMES = ['chime', 'glitch', 'hum', 'stinger'] as const
 
 export interface BuiltinToolContext {
   playSound: (name: (typeof SFX_NAMES)[number]) => void
