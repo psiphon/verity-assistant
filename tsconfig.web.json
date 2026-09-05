@@ -10,6 +10,7 @@
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
+    "types": ["@testing-library/jest-dom/vitest"],
     "baseUrl": ".",
     "paths": {
       "@renderer/*": [
@@ -17,6 +18,9 @@
       ],
       "@shared/*": [
         "src/shared/*"
+      ],
+      "#test/*": [
+        "test/*"
       ]
     }
   }
