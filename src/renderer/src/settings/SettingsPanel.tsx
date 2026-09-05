@@ -21,7 +21,6 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [saved, setSaved] = useState(false)
   const [logPath, setLogPath] = useState('')
   const [rapport, setRapport] = useState<RapportState | null>(null)
   const [memories, setMemories] = useState<MemoryEntry[]>([])
@@ -92,8 +91,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   async function save(): Promise<void> {
     if (!settings) return
     await window.verity.settings.set(settings)
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 1500)
+    onClose()
   }
 
   const provider = settings.providers[settings.activeProvider]
@@ -182,6 +180,46 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             You have a custom prompt saved, so changes to Verity&apos;s built-in default won&apos;t
             apply until you clear this (or click &quot;Use Default&quot;) and save.
           </p>
+        )}
+      </section>
+
+      <section>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.ambientEnabled}
+            onChange={(e) => update({ ambientEnabled: e.target.checked })}
+          />
+          Ambient check-ins
+        </label>
+        <p className="hint">
+          Off by default - lets Verity occasionally speak or act completely unprompted, at a random
+          interval, instead of only ever replying to you. Each check-in is a real LLM call (counts
+          against your token usage / API cost) even on the ticks where it decides to do nothing,
+          which is most of them.
+        </p>
+        {settings.ambientEnabled && (
+          <div className="settings-row-header">
+            <label>
+              Every{' '}
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={settings.ambientMinMinutes}
+                onChange={(e) => update({ ambientMinMinutes: Number(e.target.value) })}
+              />{' '}
+              to{' '}
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={settings.ambientMaxMinutes}
+                onChange={(e) => update({ ambientMaxMinutes: Number(e.target.value) })}
+              />{' '}
+              minutes
+            </label>
+          </div>
         )}
       </section>
 
@@ -321,7 +359,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
       </section>
 
       <div className="settings-footer">
-        <button onClick={save}>{saved ? 'Saved!' : 'Save'}</button>
+        <button className="settings-cancel" onClick={onClose}>
+          Cancel
+        </button>
+        <button onClick={save}>Save</button>
       </div>
     </div>
   )

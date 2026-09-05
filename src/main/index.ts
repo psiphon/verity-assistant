@@ -2,11 +2,20 @@ import { app, shell, BrowserWindow, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { registerIpcHandlers, initAgentBackend } from './ipc'
+import { registerIpcHandlers, initAgentBackend, startAmbientTimer } from './ipc'
 import { settingsStore } from './store'
 import { initLogger, log } from './logger'
 import { IPC } from '@shared/ipc'
 import { WINDOW_SIZE } from './windowConfig'
+
+// Chromium normally requires a real user gesture before an AudioContext will
+// produce audible output, to stop web pages from autoplaying ads. That's the
+// wrong default here: ambient check-ins (see ipc.ts) trigger sound effects
+// with nobody having clicked anything, and this app only ever loads its own
+// first-party UI - there's no untrusted content to protect the user from.
+// Without this, those sounds fire (tool call, IPC, everything) but are
+// silently inaudible until the user happens to click/type something first.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let tray: Tray | null = null
 
@@ -115,6 +124,7 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers()
   await initAgentBackend()
+  startAmbientTimer()
 
   const win = createWindow()
   createTray(win)

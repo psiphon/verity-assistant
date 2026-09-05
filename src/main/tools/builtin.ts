@@ -3,10 +3,13 @@ import os from 'node:os'
 import type { ToolDefinition } from '../llm/types'
 import { adjustRapport } from '../rapport'
 import { saveMemory, searchMemories } from '../memory'
+import { filesystemToolDefinitions, callFilesystemTool } from './filesystem'
+import { desktopToolDefinitions, callDesktopTool } from './desktop'
+import type { DesktopToolContext } from './desktop'
 
 export const SFX_NAMES = ['chime', 'glitch', 'hum', 'stinger'] as const
 
-export interface BuiltinToolContext {
+export interface BuiltinToolContext extends DesktopToolContext {
   playSound: (name: (typeof SFX_NAMES)[number]) => void
 }
 
@@ -127,7 +130,9 @@ export function builtinToolDefinitions(): ToolDefinition[] {
           }
         }
       }
-    }
+    },
+    ...filesystemToolDefinitions(),
+    ...desktopToolDefinitions()
   ]
 }
 
@@ -136,6 +141,11 @@ export async function callBuiltinTool(
   input: Record<string, unknown>,
   ctx: BuiltinToolContext
 ): Promise<string> {
+  const fsResult = await callFilesystemTool(name, input)
+  if (fsResult !== undefined) return fsResult
+  const desktopResult = await callDesktopTool(name, input, ctx)
+  if (desktopResult !== undefined) return desktopResult
+
   switch (name) {
     case 'get_current_time':
       return new Date().toString()

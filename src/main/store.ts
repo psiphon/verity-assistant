@@ -15,7 +15,10 @@ const defaults: AppSettings = {
   alwaysOnTop: false,
   systemPrompt: '',
   rapport: 100,
-  memories: []
+  memories: [],
+  ambientEnabled: false,
+  ambientMinMinutes: 10,
+  ambientMaxMinutes: 30
 }
 
 export const settingsStore = new Store<AppSettings>({

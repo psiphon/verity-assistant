@@ -35,6 +35,12 @@ export interface AppSettings {
   /** Freeform facts the model chose to remember via save_memory, persisted
    * across restarts and conversations. Has its own UI in Settings. */
   memories: MemoryEntry[]
+  /** Off by default - each check-in is a real LLM call (token cost) even
+   * when the model decides to do nothing, so this is opt-in. */
+  ambientEnabled: boolean
+  /** Randomized interval range (minutes) between ambient check-ins. */
+  ambientMinMinutes: number
+  ambientMaxMinutes: number
 }
 
 export interface MemoryEntry {

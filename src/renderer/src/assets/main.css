@@ -191,6 +191,25 @@
   min-height: 60px;
 }
 
+/* Chromium renders a <select>'s dropdown *popup* with its own native
+   background regardless of the closed box's CSS - without this, the near-
+   white --verity-text color the closed box uses correctly (against the dark
+   panel) becomes near-white text on that popup's near-white default,
+   unreadable once opened. */
+.settings-panel select option {
+  background-color: #14141a;
+  color: var(--verity-text);
+}
+
+.settings-panel input[type='number'] {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--verity-panel-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--verity-text);
+  width: 70px;
+}
+
 .settings-row-header {
   display: flex;
   align-items: center;
@@ -278,6 +297,12 @@
 .settings-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-footer button.settings-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--verity-text);
 }
 
 .settings-footer button {

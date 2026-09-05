@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron'
+import { ipcMain, BrowserWindow, shell, powerMonitor } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AppSettings } from '@shared/types'
 import { settingsStore } from './store'
@@ -6,7 +6,7 @@ import { createProvider } from './llm'
 import type { ChatMessage } from './llm/types'
 import { McpManager } from './mcp/client'
 import { ToolRegistry } from './tools/registry'
-import { runAgentTurn, buildSystemPrompt } from './agent/loop'
+import { runAgentTurn, buildSystemPrompt, STUCK_FALLBACK_TEXT } from './agent/loop'
 import { log, getLogPath } from './logger'
 import { WINDOW_SIZE } from './windowConfig'
 import { getRapport, getTier, resetRapport, onRapportChanged } from './rapport'
@@ -14,6 +14,21 @@ import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } fro
 
 const mcp = new McpManager()
 let history: ChatMessage[] = []
+// Guards against an ambient check-in and a real user message both calling
+// runAgentTurn at once - both read/write the same `history` array, and
+// whichever finished last would silently clobber the other's turn from it.
+let agentBusy = false
+
+const AMBIENT_NOTHING = '(nothing)'
+// Skip a check-in rather than pay for an LLM call nobody's around to see -
+// if they've been away longer than this, wait for them to come back.
+const AMBIENT_MAX_IDLE_SECONDS = 600
+// A weak/local model can ping-pong between tool calls indefinitely instead
+// of landing on a single decision (observed: 7 sound-effect calls in a row
+// before hitting the real cap). An ambient tick should be one action at
+// most, so it gets a much smaller budget than a real conversational turn.
+const AMBIENT_MAX_TOOL_ITERATIONS = 3
+let ambientTimerHandle: ReturnType<typeof setTimeout> | null = null
 
 export async function initAgentBackend(): Promise<void> {
   const settings = settingsStore.store
@@ -41,6 +56,31 @@ function playSound(name: string): void {
   getWindow()?.webContents.send(IPC.chatPlaySound, name)
 }
 
+function flashWindow(): void {
+  const win = getWindow()
+  if (!win) return
+  win.flashFrame(true)
+  setTimeout(() => win.flashFrame(false), 2000)
+}
+
+function flickerWindow(): void {
+  const win = getWindow()
+  if (!win) return
+  const original = win.getOpacity()
+  const steps = [0.15, 1, 0.15, 1]
+  let i = 0
+  const tick = (): void => {
+    if (i >= steps.length) {
+      win.setOpacity(original)
+      return
+    }
+    win.setOpacity(steps[i])
+    i++
+    setTimeout(tick, 90)
+  }
+  tick()
+}
+
 export function registerIpcHandlers(): void {
   // The face is driven live by rapport (see faceAtlas.ts on the renderer
   // side), so every viewer needs to hear about a change the moment the
@@ -54,6 +94,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.settingsSet, async (_e, settings: AppSettings) => {
     log.info('settings', `Settings saved (provider=${settings.activeProvider})`)
     settingsStore.set(settings)
+    scheduleNextAmbientCheck()
     await mcp.connectAll(settings.mcpServers)
     logMcpStatuses()
     getWindow()?.webContents.send(IPC.mcpStatuses, mcp.getStatuses())
@@ -75,6 +116,7 @@ export function registerIpcHandlers(): void {
 
     log.info('chat', `User -> ${settings.activeProvider}: ${truncate(userText)}`)
     win?.webContents.send(IPC.chatThinking, true)
+    agentBusy = true
 
     try {
       const provider = createProvider(settings.activeProvider, {
@@ -82,7 +124,7 @@ export function registerIpcHandlers(): void {
         baseUrl: providerSettings.baseUrl || undefined,
         model: providerSettings.model || undefined
       })
-      const registry = new ToolRegistry(mcp, { playSound })
+      const registry = new ToolRegistry(mcp, { playSound, flashWindow, flickerWindow })
       const rapport = getRapport()
       const tier = getTier(rapport)
       const system = buildSystemPrompt(
@@ -124,6 +166,7 @@ export function registerIpcHandlers(): void {
       win?.webContents.send(IPC.chatError, message)
     } finally {
       win?.webContents.send(IPC.chatThinking, false)
+      agentBusy = false
     }
   })
 
@@ -196,4 +239,102 @@ export function registerIpcHandlers(): void {
 
 function truncate(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+export function startAmbientTimer(): void {
+  scheduleNextAmbientCheck()
+}
+
+function scheduleNextAmbientCheck(): void {
+  // Idempotent - also called reactively when settings are saved, so any
+  // already-pending wakeup (armed with the old enabled/interval values) is
+  // cleared first rather than left to fire alongside the new one.
+  if (ambientTimerHandle) clearTimeout(ambientTimerHandle)
+
+  const settings = settingsStore.store
+  if (!settings.ambientEnabled) {
+    // Recheck periodically in case the setting gets turned on mid-session,
+    // instead of only picking it up on the next app restart.
+    ambientTimerHandle = setTimeout(scheduleNextAmbientCheck, 60_000)
+    return
+  }
+  const minMs = Math.max(1, settings.ambientMinMinutes) * 60_000
+  const maxMs = Math.max(minMs, settings.ambientMaxMinutes * 60_000)
+  const delay = minMs + Math.random() * (maxMs - minMs)
+  ambientTimerHandle = setTimeout(runAmbientCheck, delay)
+}
+
+async function runAmbientCheck(): Promise<void> {
+  try {
+    await doAmbientCheck()
+  } catch (err) {
+    log.error('ambient', 'Ambient check-in failed', err)
+  } finally {
+    scheduleNextAmbientCheck()
+  }
+}
+
+async function doAmbientCheck(): Promise<void> {
+  const settings = settingsStore.store
+  if (!settings.ambientEnabled || agentBusy) return
+  const win = getWindow()
+  if (!win) return
+
+  const idleSeconds = powerMonitor.getSystemIdleTime()
+  if (idleSeconds > AMBIENT_MAX_IDLE_SECONDS) return
+
+  agentBusy = true
+  win.webContents.send(IPC.chatThinking, true)
+  try {
+    const providerSettings = settings.providers[settings.activeProvider]
+    const provider = createProvider(settings.activeProvider, {
+      apiKey: providerSettings.apiKey,
+      baseUrl: providerSettings.baseUrl || undefined,
+      model: providerSettings.model || undefined
+    })
+    const registry = new ToolRegistry(mcp, { playSound, flashWindow, flickerWindow })
+    const rapport = getRapport()
+    const tier = getTier(rapport)
+    const system = buildSystemPrompt(
+      settings.systemPrompt,
+      rapport,
+      tier.label,
+      tier.description,
+      formatMemoriesForPrompt()
+    )
+    const trigger = `[ambient check-in: ${idleSeconds}s since last input, rapport ${rapport}/100]`
+
+    const { text, history: newHistory } = await runAgentTurn(
+      provider,
+      registry,
+      history,
+      trigger,
+      system,
+      {
+        onToolCall: (name, input) => {
+          log.info('tool', `Ambient call: ${name}`, input)
+          win.webContents.send(IPC.chatToolCall, { name, input })
+        }
+      },
+      AMBIENT_MAX_TOOL_ITERATIONS
+    )
+
+    const trimmed = text.trim()
+    if (trimmed.toLowerCase() === AMBIENT_NOTHING || trimmed === STUCK_FALLBACK_TEXT) {
+      log.info('ambient', 'Ambient check-in: no action taken')
+      return
+    }
+
+    // Only the turns where something actually happened join the real
+    // conversation history - otherwise every silent no-op tick (the common
+    // case) would pile up as clutter the model has to read back every turn.
+    history = newHistory
+    log.info('ambient', `${settings.activeProvider} -> assistant (ambient): ${truncate(text)}`)
+    win.webContents.send(IPC.chatMessage, text)
+  } catch (err) {
+    log.error('ambient', `${settings.activeProvider} ambient request failed`, err)
+  } finally {
+    win.webContents.send(IPC.chatThinking, false)
+    agentBusy = false
+  }
 }
