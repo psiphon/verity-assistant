@@ -6,7 +6,18 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      // Vendored upstream checkout + downloaded model/voice data for the
+      // optional Fish Audio TTS server (see docker/fish-audio/README.md).
+      'docker/fish-audio/fish-speech',
+      'docker/fish-audio/checkpoints',
+      'docker/fish-audio/references'
+    ]
+  },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

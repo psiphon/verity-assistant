@@ -13,6 +13,7 @@ export const IPC = {
   memoriesClear: 'memories:clear',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  ttsSynthesize: 'tts:synthesize',
   mcpStatuses: 'mcp:statuses',
   mcpReload: 'mcp:reload',
   windowToggleAlwaysOnTop: 'window:toggle-always-on-top',

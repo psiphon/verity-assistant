@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron')
 vi.mock('electron-store')
@@ -97,9 +97,12 @@ function baseSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     },
     mcpServers: [],
     ttsEnabled: true,
+    ttsEngine: 'system',
     ttsVoice: '',
     ttsRate: 1,
+    fishAudio: { baseUrl: 'http://localhost:8080', apiKey: '', referenceId: '', format: 'wav' },
     alwaysOnTop: false,
+    facePack: 'photos',
     systemPrompt: '',
     rapport: 100,
     memories: [],
@@ -131,7 +134,9 @@ beforeEach(() => {
   buildSystemPrompt.mockClear()
   McpManagerMock.instances[0]?.connectAll.mockClear()
   McpManagerMock.instances[0]?.getStatuses.mockClear()
-  vi.mocked(powerMonitor.getSystemIdleTime).mockReturnValue(0)
+  // In the ambient window by default (idle enough to be "away", not so long
+  // we've given up) - individual tests override for the edge cases.
+  vi.mocked(powerMonitor.getSystemIdleTime).mockReturnValue(120)
 })
 
 describe('registerIpcHandlers', () => {
@@ -144,6 +149,7 @@ describe('registerIpcHandlers', () => {
     for (const channel of [
       IPC.settingsGet,
       IPC.settingsSet,
+      IPC.ttsSynthesize,
       IPC.mcpStatuses,
       IPC.mcpReload,
       IPC.chatSend,
@@ -262,6 +268,66 @@ describe('chat:send', () => {
       name: 'play_sound',
       input: { sound: 'chime' }
     })
+  })
+})
+
+describe('tts:synthesize', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('returns null (no server call) when the engine is not "fish"', async () => {
+    setStoreSettings({ ttsEngine: 'system' })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const handler = getHandleHandler(IPC.ttsSynthesize)
+    expect(await handler(fakeEvent(), 'hello')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null for blank/non-string text', async () => {
+    setStoreSettings({ ttsEngine: 'fish' })
+    const handler = getHandleHandler(IPC.ttsSynthesize)
+    expect(await handler(fakeEvent(), '   ')).toBeNull()
+    expect(await handler(fakeEvent(), 42)).toBeNull()
+  })
+
+  it('synthesizes via the configured Fish Audio server and returns bytes + format', async () => {
+    setStoreSettings({
+      ttsEngine: 'fish',
+      fishAudio: {
+        baseUrl: 'http://localhost:9999',
+        apiKey: 'k',
+        referenceId: 'v1',
+        format: 'mp3'
+      }
+    })
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new Uint8Array([9, 8, 7]).buffer,
+      text: async () => ''
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const handler = getHandleHandler(IPC.ttsSynthesize)
+    const result = await handler(fakeEvent(), '  Hello.  ')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }]
+    expect(url).toBe('http://localhost:9999/v1/tts')
+    expect(JSON.parse(init.body).text).toBe('Hello.')
+    expect(result.format).toBe('mp3')
+    expect([...result.data]).toEqual([9, 8, 7])
+  })
+
+  it('returns null (renderer falls back to system voice) when the server errors', async () => {
+    setStoreSettings({ ttsEngine: 'fish' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' }))
+    )
+
+    const handler = getHandleHandler(IPC.ttsSynthesize)
+    expect(await handler(fakeEvent(), 'hello')).toBeNull()
   })
 })
 
@@ -473,6 +539,39 @@ describe('ambient check-ins', () => {
 
     await vi.advanceTimersByTimeAsync(60_000)
     expect(runAgentTurn).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it('skips a tick when the user was active too recently (not really idle)', async () => {
+    setStoreSettings({ ambientEnabled: true, ambientMinMinutes: 1, ambientMaxMinutes: 1 })
+    vi.mocked(powerMonitor.getSystemIdleTime).mockReturnValue(5)
+    startAmbientTimer()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(runAgentTurn).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it('ignores an ambient reply that just repeats the last thing said', async () => {
+    setStoreSettings({ ambientEnabled: true, ambientMinMinutes: 1, ambientMaxMinutes: 1 })
+    const line = 'It is a mild 65 degrees with clear skies.'
+    // A real turn delivers the line...
+    runAgentTurn.mockResolvedValueOnce({
+      text: line,
+      history: [{ role: 'assistant', content: line }]
+    })
+    await getHandleHandler(IPC.chatSend)(fakeEvent(), 'weather?')
+    const win = BrowserWindowMock.instances[0]
+    vi.mocked(win.webContents.send).mockClear()
+
+    // ...then the next ambient tick echoes it back (bar a stray "!").
+    runAgentTurn.mockResolvedValue({ text: `${line}!`, history: [] })
+    startAmbientTimer()
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(win.webContents.send).not.toHaveBeenCalledWith(IPC.chatMessage, expect.anything())
 
     vi.useRealTimers()
   })

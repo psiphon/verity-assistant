@@ -5,7 +5,13 @@ vi.mock('electron-store')
 
 import type { LLMProvider, ChatResult } from '../llm/types'
 import type { ToolRegistry } from '../tools/registry'
-import { DEFAULT_PERSONA, STUCK_FALLBACK_TEXT, buildSystemPrompt, runAgentTurn } from './loop'
+import {
+  DEFAULT_PERSONA,
+  STUCK_FALLBACK_TEXT,
+  buildSystemPrompt,
+  isNothingReply,
+  runAgentTurn
+} from './loop'
 
 function fakeProvider(...responses: ChatResult[]): LLMProvider {
   const chat = vi.fn()
@@ -22,6 +28,33 @@ function fakeRegistry(
     call
   } as unknown as ToolRegistry
 }
+
+describe('isNothingReply', () => {
+  it('matches the bare sentinel and common wrapped variants', () => {
+    for (const v of [
+      '(nothing)',
+      '  (nothing)  ',
+      '(nothing).',
+      '*(nothing)*',
+      '"(nothing)"',
+      '`(nothing)`',
+      'Nothing',
+      '(Nothing.)'
+    ]) {
+      expect(isNothingReply(v), v).toBe(true)
+    }
+  })
+
+  it('does not match a real reply that merely contains the word', () => {
+    for (const v of [
+      'There is nothing on your clipboard.',
+      'nothing much, you?',
+      'not (nothing)'
+    ]) {
+      expect(isNothingReply(v), v).toBe(false)
+    }
+  })
+})
 
 describe('buildSystemPrompt', () => {
   it('uses the default persona when no custom persona is given', () => {

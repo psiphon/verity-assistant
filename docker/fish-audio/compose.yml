@@ -1,0 +1,79 @@
+# Fish Audio (fish-speech) inference server for Verity's "natural voice" TTS.
+#
+# This builds the `server` target straight from the upstream fish-speech repo
+# and runs its HTTP API on :8080. Verity's renderer never talks to it directly -
+# the Electron main process proxies `POST /v1/tts` (see src/main/tts.ts), so the
+# API key set here only ever lives on the server and in Verity's encrypted
+# settings, never in a browser context.
+#
+# Quick start (see ./README.md for the long version):
+#   1. cp .env.example .env   and edit FISH_API_KEY
+#   2. git clone --depth 1 https://github.com/fishaudio/fish-speech.git \
+#        docker/fish-audio/fish-speech
+#   3. download the model weights into ./checkpoints/s2-pro  (README step 3)
+#   4. docker compose -f docker/fish-audio/compose.yml up -d
+#   5. Verity Settings -> Speak replies -> Engine "Fish Audio", URL
+#      http://localhost:<FISH_PORT>
+
+# NOTE: 8080 is a busy port (llama.cpp etc.) - FISH_PORT defaults to 8081.
+
+name: verity-fish-audio
+
+services:
+  fish-audio:
+    build:
+      # Local checkout of https://github.com/fishaudio/fish-speech (gitignored).
+      # A remote git context here is flaky under `docker compose` on Windows, so
+      # clone it yourself (README step 2). `git -C fish-speech pull` to update;
+      # `git -C fish-speech checkout <tag>` to pin.
+      context: ./fish-speech
+      dockerfile: docker/Dockerfile
+      target: server
+      args:
+        # `cuda` (NVIDIA GPU) or `cpu`. CPU works but is very slow - expect
+        # 10-30s per short reply. If you set `cpu`, also delete the `deploy:`
+        # block below.
+        BACKEND: ${FISH_BACKEND:-cuda}
+        CUDA_VER: ${FISH_CUDA_VER:-12.9.0}
+        UV_EXTRA: ${FISH_UV_EXTRA:-cu129}
+    image: verity-fish-audio:local
+    restart: unless-stopped
+    ports:
+      - '${FISH_PORT:-8081}:8080'
+    # Run the prebuilt venv's python directly instead of the image's
+    # `uv run ...` entrypoint - that re-syncs dependencies (re-downloading
+    # ~1.7GB of CUDA wheels) on every container start. The venv already has
+    # torch 2.8.0+cu129. Add "--compile" to `command` for torch.compile
+    # (long first-request warmup, faster after). Drop the "--api-key" line
+    # to run with no auth. `:?` makes compose refuse to start if it's unset.
+    entrypoint: ['/app/.venv/bin/python', 'tools/api_server.py']
+    command:
+      - '--listen=0.0.0.0:8080'
+      - '--llama-checkpoint-path=checkpoints/s2-pro'
+      - '--decoder-checkpoint-path=checkpoints/s2-pro/codec.pth'
+      - '--decoder-config-name=modded_dac_vq'
+      # bf16 - roughly halves both RAM-to-load and VRAM. Drop it if you have
+      # lots of headroom and want max quality.
+      - '--half'
+      - '--api-key=${FISH_API_KEY:?set FISH_API_KEY in docker/fish-audio/.env (copy .env.example)}'
+    volumes:
+      # Model weights (README step 2) and any reference-voice archives you stage.
+      - ./checkpoints:/app/checkpoints
+      - ./references:/app/references
+    # GPU passthrough. Requires the NVIDIA Container Toolkit on the host.
+    # Delete this block for a CPU-only build (BACKEND=cpu above).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      # `/v1/health` requires the bearer token; `/` is unauthenticated and only
+      # answers 200 once model load + warmup have finished.
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://localhost:8080/']
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      retries: 5

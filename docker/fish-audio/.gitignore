@@ -1,0 +1,6 @@
+# Local secrets, the upstream checkout, and multi-GB model / voice data -
+# never commit these.
+.env
+fish-speech/
+checkpoints/
+references/

@@ -7,7 +7,8 @@ import { createProvider } from './llm'
 import type { ChatMessage } from './llm/types'
 import { McpManager } from './mcp/client'
 import { ToolRegistry } from './tools/registry'
-import { runAgentTurn, buildSystemPrompt, STUCK_FALLBACK_TEXT } from './agent/loop'
+import { runAgentTurn, buildSystemPrompt, STUCK_FALLBACK_TEXT, isNothingReply } from './agent/loop'
+import { synthesizeFishAudio } from './tts'
 import { log, getLogPath } from './logger'
 import { WINDOW_SIZE } from './windowConfig'
 import { getRapport, getTier, resetRapport, onRapportChanged } from './rapport'
@@ -44,10 +45,17 @@ function currentSettings(): AppSettings {
 // whichever finished last would silently clobber the other's turn from it.
 let agentBusy = false
 
-const AMBIENT_NOTHING = '(nothing)'
 // Skip a check-in rather than pay for an LLM call nobody's around to see -
 // if they've been away longer than this, wait for them to come back.
 const AMBIENT_MAX_IDLE_SECONDS = 600
+// ...and skip it if they were active more recently than this. An "unprompted"
+// remark seconds after the conversation was live isn't ambient - it just
+// makes a weak model continue or re-speak the exchange that's still on screen.
+const AMBIENT_MIN_IDLE_SECONDS = 90
+// The last line actually shown/spoken to the user. An ambient tick that comes
+// back with the same text (a model latching onto recent context) is dropped
+// rather than read aloud again.
+let lastDeliveredText = ''
 // A weak/local model can ping-pong between tool calls indefinitely instead
 // of landing on a single decision (observed: 7 sound-effect calls in a row
 // before hitting the real cap). An ambient tick should be one action at
@@ -134,6 +142,25 @@ export function registerIpcHandlers(): void {
     getWindow()?.webContents.send(IPC.mcpStatuses, mcp.getStatuses())
   })
 
+  // Renderer-side TTS asks for audio here when the Fish Audio engine is
+  // selected; main does the HTTP call so the bearer token and the outbound
+  // request never touch a browser context. Returns null on any failure - the
+  // renderer then falls back to the system voice rather than going mute.
+  ipcMain.handle(IPC.ttsSynthesize, async (_e, text: unknown) => {
+    const settings = currentSettings()
+    if (settings.ttsEngine !== 'fish') return null
+    const clean = typeof text === 'string' ? text.trim() : ''
+    if (!clean) return null
+    try {
+      const data = await synthesizeFishAudio(clean, settings.fishAudio)
+      log.info('tts', `Fish Audio synthesized ${data.byteLength} bytes`)
+      return { format: settings.fishAudio.format, data }
+    } catch (err) {
+      log.error('tts', 'Fish Audio synthesis failed', err)
+      return null
+    }
+  })
+
   ipcMain.handle(IPC.mcpStatuses, () => mcp.getStatuses())
 
   ipcMain.handle(IPC.mcpReload, async () => {
@@ -203,8 +230,16 @@ export function registerIpcHandlers(): void {
       )
       history = trimHistory(newHistory)
 
-      log.info('chat', `${settings.activeProvider} -> assistant: ${truncate(text)}`)
-      win?.webContents.send(IPC.chatMessage, text)
+      if (isNothingReply(text)) {
+        // The `(nothing)` sentinel is only meaningful for ambient ticks; if
+        // the model emits it in reply to a real message, swallow it rather
+        // than read "(nothing)" aloud.
+        log.warn('chat', `${settings.activeProvider} -> assistant: no-op sentinel reply, dropped`)
+      } else {
+        log.info('chat', `${settings.activeProvider} -> assistant: ${truncate(text)}`)
+        lastDeliveredText = text
+        win?.webContents.send(IPC.chatMessage, text)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       log.error('chat', `${settings.activeProvider} request failed`, err)
@@ -286,6 +321,19 @@ function truncate(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
+// Loose equality for "the model just said this same thing again" - ignores
+// case, whitespace and trailing punctuation so a re-emitted line still counts.
+function sameLine(a: string, b: string): boolean {
+  const norm = (s: string): string =>
+    s
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[.!?,;:'"]+/g, '')
+      .trim()
+  const na = norm(a)
+  return na.length > 0 && na === norm(b)
+}
+
 // Structural sanity check on a settings payload from the renderer before it's
 // persisted wholesale (which includes the MCP server list that gets spawned).
 // Not a full schema - just enough to reject an obviously wrong shape.
@@ -353,7 +401,7 @@ async function doAmbientCheck(): Promise<void> {
   if (!win) return
 
   const idleSeconds = powerMonitor.getSystemIdleTime()
-  if (idleSeconds > AMBIENT_MAX_IDLE_SECONDS) return
+  if (idleSeconds > AMBIENT_MAX_IDLE_SECONDS || idleSeconds < AMBIENT_MIN_IDLE_SECONDS) return
 
   agentBusy = true
   win.webContents.send(IPC.chatThinking, true)
@@ -395,9 +443,14 @@ async function doAmbientCheck(): Promise<void> {
       AMBIENT_MAX_TOOL_ITERATIONS
     )
 
-    const trimmed = text.trim()
-    if (trimmed.toLowerCase() === AMBIENT_NOTHING || trimmed === STUCK_FALLBACK_TEXT) {
+    if (isNothingReply(text) || text.trim() === STUCK_FALLBACK_TEXT) {
       log.info('ambient', 'Ambient check-in: no action taken')
+      return
+    }
+    if (sameLine(text, lastDeliveredText)) {
+      // The model just re-emitted its previous line instead of doing nothing.
+      // Don't speak it again, and don't let it into history to compound.
+      log.info('ambient', 'Ambient check-in: model repeated its last reply, ignored')
       return
     }
 
@@ -405,6 +458,7 @@ async function doAmbientCheck(): Promise<void> {
     // conversation history - otherwise every silent no-op tick (the common
     // case) would pile up as clutter the model has to read back every turn.
     history = trimHistory(newHistory)
+    lastDeliveredText = text
     log.info('ambient', `${settings.activeProvider} -> assistant (ambient): ${truncate(text)}`)
     win.webContents.send(IPC.chatMessage, text)
   } catch (err) {
