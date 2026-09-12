@@ -49,7 +49,10 @@ function mapSecretFields(settings: AppSettings, fn: Transform): AppSettings {
     mcpServers: settings.mcpServers.map((s) => ({
       ...s,
       env: s.env ? Object.fromEntries(Object.entries(s.env).map(([k, v]) => [k, fn(v)])) : s.env
-    }))
+    })),
+    fishAudio: settings.fishAudio
+      ? { ...settings.fishAudio, apiKey: fn(settings.fishAudio.apiKey) }
+      : settings.fishAudio
   }
 }
 

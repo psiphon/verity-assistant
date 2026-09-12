@@ -42,6 +42,7 @@ export function useAssistant(): {
       if (settings.ttsEnabled) {
         setSpeaking(true)
         speak(text, {
+          engine: settings.ttsEngine,
           voiceName: settings.ttsVoice,
           rate: settings.ttsRate,
           onEnd: () => setSpeaking(false)

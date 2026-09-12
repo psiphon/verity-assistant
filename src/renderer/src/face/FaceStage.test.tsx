@@ -1,9 +1,13 @@
 import { render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SPRITE_URL } from './faceAtlas'
-import type { FaceState } from './faceAtlas'
+import { FACE_PACKS } from './faceAtlas'
+import type { FaceSlot, FaceState } from './faceAtlas'
+import type { FacePackId } from '@shared/types'
 
 vi.mock('pixi.js/unsafe-eval', () => ({}))
+
+const PHOTO_SLOTS = FACE_PACKS.photos.slots
+const SLOT_COUNT = Object.keys(PHOTO_SLOTS).length
 
 class FakeSprite {
   static instances: FakeSprite[] = []
@@ -82,43 +86,60 @@ function fakeWindowVerity(position: [number, number] = [10, 20]): {
   return { getPosition, setPosition }
 }
 
-function spriteFor(name: keyof typeof SPRITE_URL): FakeSprite | undefined {
-  return FakeSprite.instances.find((s) => s.texture.__url === SPRITE_URL[name])
+function spriteForSlot(slot: FaceSlot, pack: FacePackId = 'photos'): FakeSprite | undefined {
+  const url = FACE_PACKS[pack].slots[slot]
+  return FakeSprite.instances.find((s) => s.texture.__url === url)
 }
 
-async function renderFace(state: FaceState, rapport: number, onClick = vi.fn()): Promise<void> {
+async function renderFace(
+  state: FaceState,
+  rapport: number,
+  onClick = vi.fn(),
+  pack: FacePackId = 'photos'
+): Promise<void> {
   const { FaceStage } = await import('./FaceStage')
-  render(<FaceStage state={state} rapport={rapport} onClick={onClick} />)
-  await waitFor(() => expect(FakeSprite.instances.length).toBe(Object.keys(SPRITE_URL).length))
+  render(<FaceStage state={state} rapport={rapport} pack={pack} onClick={onClick} />)
+  await waitFor(() => expect(FakeSprite.instances.length).toBe(SLOT_COUNT))
 }
 
 describe('FaceStage', () => {
-  it('creates one sprite per face and shows only the one selectFace picks', async () => {
+  it('creates one sprite per slot and shows only the one selectSlot picks', async () => {
     fakeWindowVerity()
     await renderFace('thinking', 100)
 
-    expect(spriteFor('grimace')?.visible).toBe(true)
-    expect(spriteFor('happy')?.visible).toBe(false)
-    expect(spriteFor('smiling')?.visible).toBe(false)
+    expect(spriteForSlot('thinking')?.visible).toBe(true)
+    expect(spriteForSlot('talkingWarm')?.visible).toBe(false)
+    expect(spriteForSlot('restWarm')?.visible).toBe(false)
   })
 
-  it('shows the correct resting face for a low rapport score', async () => {
+  it('shows the correct resting slot for a low rapport score', async () => {
     fakeWindowVerity()
     await renderFace('resting', 10)
-    expect(spriteFor('unsatisfied')?.visible).toBe(true)
-    expect(spriteFor('smiling')?.visible).toBe(false)
+    expect(spriteForSlot('restCold')?.visible).toBe(true)
+    expect(spriteForSlot('restWarm')?.visible).toBe(false)
+  })
+
+  it('loads the images for the requested face pack', async () => {
+    fakeWindowVerity()
+    await renderFace('resting', 100, vi.fn(), 'meeseeks')
+    expect(spriteForSlot('restWarm', 'meeseeks')?.visible).toBe(true)
+    expect(
+      FakeSprite.instances.every((s) =>
+        Object.values(FACE_PACKS.meeseeks.slots).includes(s.texture.__url)
+      )
+    ).toBe(true)
   })
 
   it('updates visibility reactively when state/rapport props change', async () => {
     fakeWindowVerity()
     const { FaceStage } = await import('./FaceStage')
-    const { rerender } = render(<FaceStage state="resting" rapport={100} />)
-    await waitFor(() => expect(FakeSprite.instances.length).toBe(Object.keys(SPRITE_URL).length))
-    expect(spriteFor('smiling')?.visible).toBe(true)
+    const { rerender } = render(<FaceStage state="resting" rapport={100} pack="photos" />)
+    await waitFor(() => expect(FakeSprite.instances.length).toBe(SLOT_COUNT))
+    expect(spriteForSlot('restWarm')?.visible).toBe(true)
 
-    rerender(<FaceStage state="talking" rapport={100} />)
-    expect(spriteFor('smiling')?.visible).toBe(false)
-    expect(spriteFor('happy')?.visible).toBe(true)
+    rerender(<FaceStage state="talking" rapport={100} pack="photos" />)
+    expect(spriteForSlot('restWarm')?.visible).toBe(false)
+    expect(spriteForSlot('talkingWarm')?.visible).toBe(true)
   })
 
   it('treats a press-and-release with no movement as a click', async () => {
@@ -180,8 +201,8 @@ describe('FaceStage', () => {
   it('destroys the Pixi application on unmount', async () => {
     fakeWindowVerity()
     const { FaceStage } = await import('./FaceStage')
-    const { unmount } = render(<FaceStage state="resting" rapport={100} />)
-    await waitFor(() => expect(FakeSprite.instances.length).toBe(Object.keys(SPRITE_URL).length))
+    const { unmount } = render(<FaceStage state="resting" rapport={100} pack="photos" />)
+    await waitFor(() => expect(FakeSprite.instances.length).toBe(SLOT_COUNT))
 
     unmount()
     expect(FakeApplication.instances[0].destroy).toHaveBeenCalled()

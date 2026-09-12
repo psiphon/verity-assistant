@@ -7,6 +7,7 @@
   "private": true,
   "scripts": {
     "circle-crop-faces": "node scripts/circle-crop-faces.mjs",
+    "slice-meeseeks": "node scripts/slice-meeseeks-sheet.mjs",
     "format": "prettier --write .",
     "lint": "eslint --cache .",
     "test": "vitest run",

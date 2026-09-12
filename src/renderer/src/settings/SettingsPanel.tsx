@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type {
   AppSettings,
+  FacePackId,
   McpServerConfig,
   MemoryEntry,
   ProviderId,
   RapportState
 } from '@shared/types'
 import { listVoices } from '../tts/speak'
+import { FACE_PACKS } from '../face/faceAtlas'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -64,6 +66,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   ): void {
     if (!settings) return
     update({ providers: { ...settings.providers, [id]: { ...settings.providers[id], ...patch } } })
+  }
+
+  function updateFish(patch: Partial<AppSettings['fishAudio']>): void {
+    if (!settings) return
+    update({ fishAudio: { ...settings.fishAudio, ...patch } })
   }
 
   function updateServer(id: string, patch: Partial<McpServerConfig>): void {
@@ -184,6 +191,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
       </section>
 
       <section>
+        <label>Face</label>
+        <select
+          value={settings.facePack}
+          onChange={(e) => update({ facePack: e.target.value as FacePackId })}
+        >
+          {(Object.keys(FACE_PACKS) as FacePackId[]).map((id) => (
+            <option key={id} value={id}>
+              {FACE_PACKS[id].label}
+            </option>
+          ))}
+        </select>
+        <p className="hint">
+          Which set of expressions the floating head cycles through. It still switches on its own
+          with her mood and your rapport - this only changes the artwork.
+        </p>
+      </section>
+
+      <section>
         <label>
           <input
             type="checkbox"
@@ -277,18 +302,77 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
         {settings.ttsEnabled && (
           <>
-            <label>Voice</label>
+            <label>Engine</label>
             <select
-              value={settings.ttsVoice}
-              onChange={(e) => update({ ttsVoice: e.target.value })}
+              value={settings.ttsEngine}
+              onChange={(e) => update({ ttsEngine: e.target.value as AppSettings['ttsEngine'] })}
             >
-              <option value="">System default</option>
-              {voices.map((v) => (
-                <option key={v.name} value={v.name}>
-                  {v.name} ({v.lang})
-                </option>
-              ))}
+              <option value="system">System voice (offline)</option>
+              <option value="fish">Fish Audio (natural)</option>
             </select>
+
+            {settings.ttsEngine === 'system' && (
+              <>
+                <label>Voice</label>
+                <select
+                  value={settings.ttsVoice}
+                  onChange={(e) => update({ ttsVoice: e.target.value })}
+                >
+                  <option value="">System default</option>
+                  {voices.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            {settings.ttsEngine === 'fish' && (
+              <>
+                <label>Server URL</label>
+                <input
+                  type="text"
+                  value={settings.fishAudio.baseUrl}
+                  onChange={(e) => updateFish({ baseUrl: e.target.value })}
+                  placeholder="http://localhost:8080"
+                />
+
+                <label>API Key</label>
+                <input
+                  type="password"
+                  value={settings.fishAudio.apiKey}
+                  onChange={(e) => updateFish({ apiKey: e.target.value })}
+                  placeholder="matches the server's --api-key"
+                />
+
+                <label>Voice reference (optional)</label>
+                <input
+                  type="text"
+                  value={settings.fishAudio.referenceId}
+                  onChange={(e) => updateFish({ referenceId: e.target.value })}
+                  placeholder="reference id / staged voice name - blank = default"
+                />
+
+                <label>Audio format</label>
+                <select
+                  value={settings.fishAudio.format}
+                  onChange={(e) =>
+                    updateFish({ format: e.target.value as AppSettings['fishAudio']['format'] })
+                  }
+                >
+                  <option value="wav">wav (most compatible)</option>
+                  <option value="mp3">mp3 (smaller)</option>
+                  <option value="opus">opus (smallest)</option>
+                </select>
+
+                <p className="hint">
+                  Needs a running fish-speech server - see docker/fish-audio/README.md.
+                  Verity&apos;s main process sends each reply&apos;s text to this URL to synthesize;
+                  it falls back to the system voice if the server can&apos;t be reached.
+                </p>
+              </>
+            )}
 
             <label>Rate ({settings.ttsRate.toFixed(1)}x)</label>
             <input
@@ -352,7 +436,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           API keys and MCP server secrets are stored encrypted via your OS keychain. The weather
           tool contacts open-meteo.com (and ipapi.co for approximate IP location when you don&apos;t
           name a city). The file tools (read/search) send whatever they read to your configured LLM
-          provider, and are blocked from unprompted &quot;ambient&quot; check-ins.
+          provider, and are blocked from unprompted &quot;ambient&quot; check-ins. With the Fish
+          Audio voice engine, each spoken reply&apos;s text is sent to the TTS server URL you
+          configure (local by default).
         </p>
       </section>
 

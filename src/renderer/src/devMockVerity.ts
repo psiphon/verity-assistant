@@ -19,9 +19,12 @@ export function installDevMockVerityIfNeeded(): void {
       { id: '1', name: 'example-fs', command: 'npx', args: ['-y', 'example-mcp'], enabled: false }
     ],
     ttsEnabled: true,
+    ttsEngine: 'system',
     ttsVoice: '',
     ttsRate: 1,
+    fishAudio: { baseUrl: 'http://localhost:8080', apiKey: '', referenceId: '', format: 'wav' },
     alwaysOnTop: false,
+    facePack: 'photos',
     systemPrompt: '',
     rapport: 100,
     memories: [],
@@ -95,6 +98,9 @@ export function installDevMockVerityIfNeeded(): void {
     settings: {
       get: async () => settings,
       set: async () => {}
+    },
+    tts: {
+      synthesize: async () => null
     },
     mcp: {
       getStatuses: async () => statuses,

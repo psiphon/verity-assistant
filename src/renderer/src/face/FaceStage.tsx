@@ -1,16 +1,18 @@
 import { useEffect, useRef } from 'react'
 import 'pixi.js/unsafe-eval'
 import { Application, Assets, Sprite, Texture } from 'pixi.js'
+import type { FacePackId } from '@shared/types'
 import type { FaceState } from './faceAtlas'
-import { selectFace, SPRITE_URL } from './faceAtlas'
+import { resolveFacePack, selectSlot } from './faceAtlas'
 
 interface FaceStageProps {
   state: FaceState
   rapport: number
+  pack: FacePackId
   onClick?: () => void
 }
 
-export function FaceStage({ state, rapport, onClick }: FaceStageProps): React.JSX.Element {
+export function FaceStage({ state, rapport, pack, onClick }: FaceStageProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const spritesRef = useRef<Record<string, Sprite> | null>(null)
   const stateRef = useRef(state)
@@ -43,21 +45,25 @@ export function FaceStage({ state, rapport, onClick }: FaceStageProps): React.JS
       }
       container.appendChild(app.canvas)
 
-      const entries = Object.entries(SPRITE_URL)
+      const entries = Object.entries(resolveFacePack(pack).slots)
       const loaded = await Assets.load<Texture>(entries.map(([, url]) => url))
 
-      // One sprite per face, all added once and left in the stage - the
+      // One sprite per slot, all added once and left in the stage - the
       // active one is switched by toggling `.visible` rather than
       // reassigning `.texture` on a live sprite.
+      const activeSlot = selectSlot(stateRef.current, rapportRef.current)
       const sprites: Record<string, Sprite> = {}
-      for (const [name, url] of entries) {
+      for (const [slot, url] of entries) {
         const tex = loaded[url]
-        tex.source.scaleMode = 'nearest'
+        // Bilinear, not 'nearest' - the sources are far larger than the
+        // ~180px the face renders at, and nearest-neighbour downscaling
+        // dropped pixels unevenly, which read as a grainy/aliased ball.
+        tex.source.scaleMode = 'linear'
         const sprite = new Sprite(tex)
         sprite.anchor.set(0.5)
-        sprite.visible = name === selectFace(stateRef.current, rapportRef.current)
+        sprite.visible = slot === activeSlot
         app.stage.addChild(sprite)
-        sprites[name] = sprite
+        sprites[slot] = sprite
       }
       spritesRef.current = sprites
 
@@ -106,16 +112,18 @@ export function FaceStage({ state, rapport, onClick }: FaceStageProps): React.JS
         // app was never fully initialized
       }
     }
-  }, [])
+    // Re-run (tear down + rebuild the Pixi app) when the face pack changes
+    // so a different set of textures is loaded.
+  }, [pack])
 
   useEffect(() => {
     const sprites = spritesRef.current
     if (!sprites) return
-    const activeName = selectFace(state, rapport)
-    for (const [name, sprite] of Object.entries(sprites)) {
-      sprite.visible = name === activeName
+    const activeSlot = selectSlot(state, rapport)
+    for (const [slot, sprite] of Object.entries(sprites)) {
+      sprite.visible = slot === activeSlot
     }
-  }, [state, rapport])
+  }, [state, rapport, pack])
 
   // The face is both the window's drag handle and its click target. CSS
   // -webkit-app-region: drag can't do both reliably on Windows - once a

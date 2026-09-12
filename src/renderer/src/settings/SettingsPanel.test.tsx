@@ -195,6 +195,47 @@ describe('SettingsPanel', () => {
       expect(screen.queryByText(/^Rate \(/)).not.toBeInTheDocument()
     })
 
+    it('swaps the system voice select for the Fish Audio fields when the engine changes', async () => {
+      setup({ settings: defaultSettings({ ttsEnabled: true }) })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      // system engine by default: voice select present, fish fields absent
+      expect(screen.getByText('Voice')).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('http://localhost:8080')).not.toBeInTheDocument()
+
+      fireEvent.change(screen.getByDisplayValue('System voice (offline)'), {
+        target: { value: 'fish' }
+      })
+
+      expect(screen.queryByText('Voice')).not.toBeInTheDocument()
+      expect(screen.getByPlaceholderText('http://localhost:8080')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/api-key/)).toBeInTheDocument()
+      // rate stays available for both engines
+      expect(screen.getByText(/^Rate \(/)).toBeInTheDocument()
+    })
+
+    it('edits Fish Audio server settings', async () => {
+      const fake = setup({
+        settings: defaultSettings({ ttsEnabled: true, ttsEngine: 'fish' })
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      fireEvent.change(screen.getByPlaceholderText('http://localhost:8080'), {
+        target: { value: 'http://localhost:9000' }
+      })
+      fireEvent.change(screen.getByPlaceholderText(/api-key/), { target: { value: 'shhh' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => expect(fake.api.settings.set).toHaveBeenCalled())
+      const saved = vi.mocked(fake.api.settings.set).mock.calls[0][0]
+      expect(saved.fishAudio).toMatchObject({
+        baseUrl: 'http://localhost:9000',
+        apiKey: 'shhh'
+      })
+    })
+
     it('lists available voices in the voice select', async () => {
       vi.mocked(listVoices).mockReturnValue([
         { name: 'Alex', lang: 'en-US' } as SpeechSynthesisVoice,

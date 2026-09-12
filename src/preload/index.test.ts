@@ -141,6 +141,11 @@ describe('VerityApi wiring', () => {
     expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(IPC.settingsSet, settings)
   })
 
+  it('tts.synthesize invokes tts:synthesize with the text', async () => {
+    await api.tts.synthesize('read this aloud')
+    expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(IPC.ttsSynthesize, 'read this aloud')
+  })
+
   it('mcp.getStatuses/reload invoke the right channels', async () => {
     await api.mcp.getStatuses()
     expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(IPC.mcpStatuses)

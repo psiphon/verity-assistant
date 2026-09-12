@@ -11,9 +11,12 @@ export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettin
     },
     mcpServers: [],
     ttsEnabled: true,
+    ttsEngine: 'system',
     ttsVoice: '',
     ttsRate: 1,
+    fishAudio: { baseUrl: 'http://localhost:8080', apiKey: '', referenceId: '', format: 'wav' },
     alwaysOnTop: false,
+    facePack: 'photos',
     systemPrompt: '',
     rapport: 100,
     memories: [],
@@ -112,6 +115,9 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       set: vi.fn(async (s: AppSettings) => {
         state.settings = s
       })
+    },
+    tts: {
+      synthesize: vi.fn(async () => null)
     },
     mcp: {
       getStatuses: vi.fn(async () => []),

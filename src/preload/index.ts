@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc'
-import type { AppSettings, McpServerStatus, RapportState, MemoryEntry } from '@shared/types'
+import type {
+  AppSettings,
+  McpServerStatus,
+  RapportState,
+  MemoryEntry,
+  TtsAudio
+} from '@shared/types'
 
 const api = {
   chat: {
@@ -53,6 +59,12 @@ const api = {
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (settings: AppSettings): Promise<void> => ipcRenderer.invoke(IPC.settingsSet, settings)
+  },
+  tts: {
+    /** Synthesize `text` with the configured Fish Audio server. Resolves to
+     * null when that engine isn't selected or the server call fails. */
+    synthesize: (text: string): Promise<TtsAudio | null> =>
+      ipcRenderer.invoke(IPC.ttsSynthesize, text)
   },
   mcp: {
     getStatuses: (): Promise<McpServerStatus[]> => ipcRenderer.invoke(IPC.mcpStatuses),

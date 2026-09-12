@@ -10,9 +10,17 @@ const defaults: AppSettings = {
   },
   mcpServers: [],
   ttsEnabled: true,
+  ttsEngine: 'system',
   ttsVoice: '',
   ttsRate: 1,
+  fishAudio: {
+    baseUrl: 'http://localhost:8080',
+    apiKey: '',
+    referenceId: '',
+    format: 'wav'
+  },
   alwaysOnTop: false,
+  facePack: 'photos',
   systemPrompt: '',
   rapport: 100,
   memories: [],

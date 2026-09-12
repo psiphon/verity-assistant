@@ -1,5 +1,26 @@
 export type ProviderId = 'anthropic' | 'openai' | 'ollama'
 
+export type FacePackId = 'photos' | 'meeseeks'
+
+/** Which text-to-speech backend voices Verity's replies. `system` is the
+ * browser `speechSynthesis` voices (offline, robotic); `fish` is a
+ * self-hosted fish-speech / OpenAudio server (see docker/fish-audio/). */
+export type TtsEngine = 'system' | 'fish'
+
+export interface FishAudioSettings {
+  /** Base URL of the fish-speech API server, e.g. http://localhost:8080.
+   * Only the Electron main process contacts this (see src/main/tts.ts). */
+  baseUrl: string
+  /** Bearer token the server was started with (--api-key). Encrypted at rest
+   * like the provider API keys - see src/main/secrets.ts. */
+  apiKey: string
+  /** Optional reference-voice id / staged archive name for voice cloning.
+   * Empty means the server's default voice. */
+  referenceId: string
+  /** Container the server encodes audio in. wav is the most broadly decodable. */
+  format: 'wav' | 'mp3' | 'opus'
+}
+
 export interface McpServerConfig {
   id: string
   name: string
@@ -20,9 +41,17 @@ export interface AppSettings {
   providers: Record<ProviderId, ProviderSettings>
   mcpServers: McpServerConfig[]
   ttsEnabled: boolean
+  /** Which backend synthesizes spoken replies. */
+  ttsEngine: TtsEngine
+  /** System-voice name (only used when ttsEngine === 'system'). */
   ttsVoice: string
+  /** Playback speed multiplier - applies to both engines. */
   ttsRate: number
+  /** Connection + voice settings for ttsEngine === 'fish'. */
+  fishAudio: FishAudioSettings
   alwaysOnTop: boolean
+  /** Which set of face images the floating head uses. */
+  facePack: FacePackId
   /** Overrides Verity's default persona. Empty string means "use the
    * built-in default". Rapport and tool-use instructions are always
    * appended regardless of what's here. */
@@ -41,6 +70,13 @@ export interface AppSettings {
   /** Randomized interval range (minutes) between ambient check-ins. */
   ambientMinMinutes: number
   ambientMaxMinutes: number
+}
+
+/** Synthesized audio handed back from the main process over IPC. `data` is the
+ * raw encoded file bytes (structured-cloned across the bridge). */
+export interface TtsAudio {
+  format: FishAudioSettings['format']
+  data: Uint8Array
 }
 
 export interface MemoryEntry {

@@ -113,7 +113,7 @@ describe('useAssistant', () => {
     expect(result.current.entries).toMatchObject([{ role: 'assistant', text: 'Hello there.' }])
     expect(speak).toHaveBeenCalledWith(
       'Hello there.',
-      expect.objectContaining({ voiceName: 'Alex', rate: 1.2 })
+      expect.objectContaining({ engine: 'system', voiceName: 'Alex', rate: 1.2 })
     )
   })
 

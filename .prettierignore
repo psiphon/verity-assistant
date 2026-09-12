@@ -4,3 +4,6 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+docker/fish-audio/fish-speech
+docker/fish-audio/checkpoints
+docker/fish-audio/references

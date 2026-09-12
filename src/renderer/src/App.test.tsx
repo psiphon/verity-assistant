@@ -2,13 +2,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatEntry } from './chat/useAssistant'
 import type { FaceState } from './face/faceAtlas'
+import { defaultSettings } from '#test/mocks/verity'
 
 vi.mock('./audio/sfx')
 vi.mock('./chat/useAssistant')
 vi.mock('./face/FaceStage', () => ({
-  FaceStage: (props: { state: FaceState; rapport: number; onClick?: () => void }) => (
+  FaceStage: (props: { state: FaceState; rapport: number; pack: string; onClick?: () => void }) => (
     <button data-testid="face-stage" onClick={props.onClick}>
-      {props.state}-{props.rapport}
+      {props.state}-{props.rapport}-{props.pack}
     </button>
   )
 }))
@@ -57,6 +58,9 @@ beforeEach(() => {
         openSettingsListeners.add(cb)
         return () => openSettingsListeners.delete(cb)
       }
+    },
+    settings: {
+      get: vi.fn(async () => defaultSettings())
     }
   } as unknown as Window['verity']
 })
