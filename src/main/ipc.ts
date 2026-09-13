@@ -11,24 +11,21 @@ import { runAgentTurn, buildSystemPrompt, STUCK_FALLBACK_TEXT, isNothingReply } 
 import { synthesizeFishAudio } from './tts'
 import { log, getLogPath } from './logger'
 import { WINDOW_SIZE } from './windowConfig'
-import { getRapport, getTier, resetRapport, onRapportChanged } from './rapport'
+import { getRapport, getTier, resetRapport, onRapportChanged, getRapportHistory } from './rapport'
 import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } from './memory'
+import {
+  trimHistory,
+  getWorkingHistory,
+  setWorkingHistory,
+  getTranscript,
+  appendTranscript,
+  clearConversation
+} from './conversation'
 
 const mcp = new McpManager()
-let history: ChatMessage[] = []
-// Conversation history is replayed in full on every turn, so it can't grow
-// without bound - past this many messages the oldest are dropped (never
-// splitting an assistant tool_use call from its tool results).
-const MAX_HISTORY_MESSAGES = 40
-
-function trimHistory(messages: ChatMessage[]): ChatMessage[] {
-  if (messages.length <= MAX_HISTORY_MESSAGES) return messages
-  let start = messages.length - MAX_HISTORY_MESSAGES
-  // Don't begin the kept slice on an orphaned tool result whose matching
-  // assistant tool_use call was just trimmed away.
-  while (start < messages.length && messages[start].role === 'tool') start++
-  return messages.slice(start)
-}
+// Seeded from disk so the LLM's context survives a restart instead of
+// starting the relationship over from nothing every launch.
+let history: ChatMessage[] = getWorkingHistory()
 
 function finiteOr(value: unknown, fallback: number): number {
   const n = Number(value)
@@ -187,6 +184,7 @@ export function registerIpcHandlers(): void {
     }
 
     log.info('chat', `User -> ${settings.activeProvider}: ${truncate(userText)}`)
+    appendTranscript({ role: 'user', text: userText })
     win?.webContents.send(IPC.chatThinking, true)
     agentBusy = true
 
@@ -229,6 +227,7 @@ export function registerIpcHandlers(): void {
         }
       )
       history = trimHistory(newHistory)
+      setWorkingHistory(history)
 
       if (isNothingReply(text)) {
         // The `(nothing)` sentinel is only meaningful for ambient ticks; if
@@ -238,11 +237,13 @@ export function registerIpcHandlers(): void {
       } else {
         log.info('chat', `${settings.activeProvider} -> assistant: ${truncate(text)}`)
         lastDeliveredText = text
+        appendTranscript({ role: 'assistant', text })
         win?.webContents.send(IPC.chatMessage, text)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       log.error('chat', `${settings.activeProvider} request failed`, err)
+      appendTranscript({ role: 'system', text: `Error: ${message}` })
       win?.webContents.send(IPC.chatError, message)
     } finally {
       win?.webContents.send(IPC.chatThinking, false)
@@ -293,6 +294,8 @@ export function registerIpcHandlers(): void {
     return { value, tierLabel: getTier(value).label }
   })
 
+  ipcMain.handle(IPC.rapportHistoryGet, () => getRapportHistory())
+
   ipcMain.handle(IPC.memoriesGet, () => getMemories())
 
   ipcMain.handle(IPC.memoriesDelete, (_e, id: string) => {
@@ -304,6 +307,16 @@ export function registerIpcHandlers(): void {
     log.info('memory', 'Manual clear requested from Settings')
     clearMemories()
     return getMemories()
+  })
+
+  ipcMain.handle(IPC.conversationGet, () => getTranscript())
+
+  ipcMain.handle(IPC.conversationClear, (event) => {
+    log.info('chat', 'Manual conversation clear requested from Settings')
+    clearConversation()
+    history = []
+    lastDeliveredText = ''
+    BrowserWindow.fromWebContents(event.sender)?.webContents.send(IPC.conversationCleared)
   })
 
   ipcMain.handle(IPC.logsGetPath, () => getLogPath())
@@ -458,7 +471,9 @@ async function doAmbientCheck(): Promise<void> {
     // conversation history - otherwise every silent no-op tick (the common
     // case) would pile up as clutter the model has to read back every turn.
     history = trimHistory(newHistory)
+    setWorkingHistory(history)
     lastDeliveredText = text
+    appendTranscript({ role: 'assistant', text })
     log.info('ambient', `${settings.activeProvider} -> assistant (ambient): ${truncate(text)}`)
     win.webContents.send(IPC.chatMessage, text)
   } catch (err) {

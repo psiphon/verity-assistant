@@ -115,7 +115,7 @@ describe('App', () => {
     expect(send).toHaveBeenCalledWith('hi')
   })
 
-  describe('status line', () => {
+  describe('status pill', () => {
     it('shows a thinking pill when thinking and no active tool', () => {
       mockAssistant({ thinking: true })
       render(<App />)
@@ -128,33 +128,28 @@ describe('App', () => {
       expect(screen.getByText('using get_current_time…')).toBeInTheDocument()
       expect(screen.queryByText('thinking…')).not.toBeInTheDocument()
     })
+  })
 
-    it('shows the last assistant/system entry when idle', () => {
+  describe('transcript', () => {
+    function entry(id: string, role: ChatEntry['role'], text: string): ChatEntry {
+      return { id, role, text, createdAt: new Date().toISOString() }
+    }
+
+    it('shows an empty-state hint when nothing has been said yet', () => {
+      mockAssistant({ entries: [] })
+      render(<App />)
+      expect(screen.getByText('Nothing said yet.')).toBeInTheDocument()
+    })
+
+    it('renders every entry, including the user’s own messages', () => {
       const entries: ChatEntry[] = [
-        { id: '1', role: 'user', text: 'hi' },
-        { id: '2', role: 'assistant', text: 'hello there' }
+        entry('1', 'user', 'hi'),
+        entry('2', 'assistant', 'hello there')
       ]
       mockAssistant({ entries })
       render(<App />)
+      expect(screen.getByText('hi')).toBeInTheDocument()
       expect(screen.getByText('hello there')).toBeInTheDocument()
-    })
-
-    it('finds the last non-user entry even if a user message came after it', () => {
-      const entries: ChatEntry[] = [
-        { id: '1', role: 'user', text: 'hi' },
-        { id: '2', role: 'assistant', text: 'hello there' },
-        { id: '3', role: 'user', text: 'a follow-up with no reply yet' }
-      ]
-      mockAssistant({ entries })
-      render(<App />)
-      expect(screen.getByText('hello there')).toBeInTheDocument()
-    })
-
-    it('shows nothing when there are no non-user entries yet', () => {
-      mockAssistant({ entries: [{ id: '1', role: 'user', text: 'hi' }] })
-      render(<App />)
-      expect(screen.queryByText('hi')).not.toBeInTheDocument()
-      expect(screen.queryByText('thinking…')).not.toBeInTheDocument()
     })
   })
 

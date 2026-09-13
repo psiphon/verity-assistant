@@ -5,6 +5,7 @@ import type {
   McpServerConfig,
   MemoryEntry,
   ProviderId,
+  RapportEvent,
   RapportState
 } from '@shared/types'
 import { listVoices } from '../tts/speak'
@@ -25,12 +26,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [logPath, setLogPath] = useState('')
   const [rapport, setRapport] = useState<RapportState | null>(null)
+  const [rapportHistory, setRapportHistory] = useState<RapportEvent[]>([])
   const [memories, setMemories] = useState<MemoryEntry[]>([])
+  const [conversationCleared, setConversationCleared] = useState(false)
 
   useEffect(() => {
     window.verity.settings.get().then(setSettings)
     window.verity.logs.getPath().then(setLogPath)
     window.verity.rapport.get().then(setRapport)
+    window.verity.rapport.getHistory().then(setRapportHistory)
     window.verity.memories.get().then(setMemories)
     const load = (): void => setVoices(listVoices())
     load()
@@ -42,6 +46,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     if (!window.confirm('Reset the relationship back to a full 100/100? This forgets everything.'))
       return
     setRapport(await window.verity.rapport.reset())
+    setRapportHistory([])
+  }
+
+  async function handleClearConversation(): Promise<void> {
+    if (!window.confirm("Clear the conversation Verity remembers? This can't be undone.")) return
+    await window.verity.conversation.clear()
+    setConversationCleared(true)
   }
 
   async function handleDeleteMemory(id: string): Promise<void> {
@@ -265,6 +276,30 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           and it persists across restarts - her tone shifts as it crosses tiers instead of resetting
           every conversation.
         </p>
+        {rapportHistory.length > 0 && (
+          <div className="memory-list">
+            {rapportHistory.slice(0, 10).map((e) => (
+              <div key={e.createdAt} className="memory-row">
+                <span className="memory-content">
+                  {e.delta >= 0 ? '+' : ''}
+                  {e.delta} ({e.reason}) &rarr; {e.value}/100
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="settings-row-header">
+          <label>Conversation</label>
+          <button onClick={handleClearConversation}>Clear</button>
+        </div>
+        <p className="hint">
+          {conversationCleared
+            ? "Cleared - Verity won't remember the conversation on the next message."
+            : 'The conversation (and what Verity has been discussing) persists across restarts, separately from saved memories and rapport.'}
+        </p>
       </section>
 
       <section>
@@ -280,7 +315,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <div className="memory-list">
             {[...memories].reverse().map((m) => (
               <div key={m.id} className="memory-row">
-                <span className="memory-content">{m.content}</span>
+                <span className="memory-content">
+                  {m.kind !== 'fact' && <span className="memory-kind">{m.kind}</span>}
+                  {m.content}
+                </span>
                 <button onClick={() => handleDeleteMemory(m.id)} aria-label="Forget this">
                   🗑
                 </button>

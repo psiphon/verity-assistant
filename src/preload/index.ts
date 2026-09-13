@@ -4,7 +4,9 @@ import type {
   AppSettings,
   McpServerStatus,
   RapportState,
+  RapportEvent,
   MemoryEntry,
+  TranscriptEntry,
   TtsAudio
 } from '@shared/types'
 
@@ -45,6 +47,7 @@ const api = {
   rapport: {
     get: (): Promise<RapportState> => ipcRenderer.invoke(IPC.rapportGet),
     reset: (): Promise<RapportState> => ipcRenderer.invoke(IPC.rapportReset),
+    getHistory: (): Promise<RapportEvent[]> => ipcRenderer.invoke(IPC.rapportHistoryGet),
     onChanged: (cb: (state: RapportState) => void): (() => void) => {
       const listener = (_e: Electron.IpcRendererEvent, state: RapportState): void => cb(state)
       ipcRenderer.on(IPC.rapportChanged, listener)
@@ -55,6 +58,15 @@ const api = {
     get: (): Promise<MemoryEntry[]> => ipcRenderer.invoke(IPC.memoriesGet),
     delete: (id: string): Promise<MemoryEntry[]> => ipcRenderer.invoke(IPC.memoriesDelete, id),
     clear: (): Promise<MemoryEntry[]> => ipcRenderer.invoke(IPC.memoriesClear)
+  },
+  conversation: {
+    get: (): Promise<TranscriptEntry[]> => ipcRenderer.invoke(IPC.conversationGet),
+    clear: (): Promise<void> => ipcRenderer.invoke(IPC.conversationClear),
+    onCleared: (cb: () => void): (() => void) => {
+      const listener = (): void => cb()
+      ipcRenderer.on(IPC.conversationCleared, listener)
+      return () => ipcRenderer.removeListener(IPC.conversationCleared, listener)
+    }
   },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),

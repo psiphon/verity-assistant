@@ -1,9 +1,21 @@
+import Store from 'electron-store'
+import type { RapportEvent } from '@shared/types'
 import { settingsStore } from './store'
 import { log } from './logger'
 
 const MIN = 0
 const MAX = 100
 const DEFAULT_RAPPORT = 100
+// Kept separate from settingsStore, deliberately - unlike the rapport score
+// itself, this only grows, and settingsStore round-trips wholesale through
+// the Settings form's get/set flow (see ipc.ts settingsSet); a steadily
+// growing history array has no business riding along with that.
+const MAX_HISTORY_EVENTS = 100
+
+const rapportStore = new Store<{ history: RapportEvent[] }>({
+  name: 'verity-rapport',
+  defaults: { history: [] }
+})
 
 export interface RapportTier {
   label: string
@@ -67,13 +79,24 @@ export function adjustRapport(delta: number, reason: string): number {
   const current = getRapport()
   const next = Math.max(MIN, Math.min(MAX, current + delta))
   settingsStore.set('rapport', next)
+  const event: RapportEvent = { delta, reason, value: next, createdAt: new Date().toISOString() }
+  const history = [...rapportStore.get('history', []), event].slice(-MAX_HISTORY_EVENTS)
+  rapportStore.set('history', history)
   log.info('rapport', `${current} -> ${next} (${delta >= 0 ? '+' : ''}${delta}): ${reason}`)
   notify(next)
   return next
 }
 
+/** Most-recent first - the order a "what happened recently" recall wants. */
+export function getRapportHistory(): RapportEvent[] {
+  return [...rapportStore.get('history', [])].reverse()
+}
+
 export function resetRapport(): number {
   settingsStore.set('rapport', DEFAULT_RAPPORT)
+  // "This forgets everything" (see the Settings confirm dialog) - the event
+  // log is part of that relationship memory, not just the score.
+  rapportStore.set('history', [])
   log.info('rapport', `Reset to ${DEFAULT_RAPPORT}`)
   notify(DEFAULT_RAPPORT)
   return DEFAULT_RAPPORT

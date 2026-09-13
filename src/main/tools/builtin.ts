@@ -2,8 +2,9 @@ import { clipboard, powerMonitor, shell, Notification } from 'electron'
 import os from 'node:os'
 import path from 'node:path'
 import type { ToolDefinition } from '../llm/types'
-import { adjustRapport } from '../rapport'
+import { adjustRapport, getRapportHistory } from '../rapport'
 import { saveMemory, searchMemories } from '../memory'
+import type { MemoryKind } from '@shared/types'
 import { filesystemToolDefinitions, callFilesystemTool } from './filesystem'
 import { desktopToolDefinitions, callDesktopTool } from './desktop'
 import type { DesktopToolContext } from './desktop'
@@ -142,7 +143,13 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       inputSchema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: 'The fact to remember, written concisely.' }
+          content: { type: 'string', description: 'The fact to remember, written concisely.' },
+          kind: {
+            type: 'string',
+            enum: ['fact', 'preference', 'event', 'relationship'],
+            description:
+              'What kind of memory this is - fact: a stable detail about them (name, job, etc). preference: something they like/dislike. event: something that happened. relationship: a pattern in how they treat you. Defaults to fact.'
+          }
         },
         required: ['content']
       }
@@ -157,6 +164,20 @@ export function builtinToolDefinitions(): ToolDefinition[] {
           query: {
             type: 'string',
             description: 'Text to search for, or omit/empty to list all memories.'
+          }
+        }
+      }
+    },
+    {
+      name: 'recall_rapport_history',
+      description:
+        'See the history of specific events that moved your rapport with this person up or down, with reasons - not just the current number. Use this to reference a specific past incident instead of only knowing the current tier.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Max events to return, most recent first. Default 10.'
           }
         }
       }
@@ -246,14 +267,27 @@ export async function callBuiltinTool(
     case 'save_memory': {
       const content = String(input.content ?? '').trim()
       if (!content) return 'content is required'
-      const entry = saveMemory(content)
+      const entry = saveMemory(content, input.kind as MemoryKind | undefined)
       return `Remembered: ${entry.content}`
     }
     case 'recall_memories': {
       const query = String(input.query ?? '')
       const matches = searchMemories(query)
       if (matches.length === 0) return '(no matching memories)'
-      return matches.map((m) => `- ${m.content}`).join('\n')
+      return matches
+        .map((m) => (m.kind === 'fact' ? `- ${m.content}` : `- (${m.kind}) ${m.content}`))
+        .join('\n')
+    }
+    case 'recall_rapport_history': {
+      const limit = Math.max(1, Math.min(50, Number(input.limit) || 10))
+      const events = getRapportHistory().slice(0, limit)
+      if (events.length === 0) return '(no rapport history yet)'
+      return events
+        .map(
+          (e) =>
+            `- ${e.createdAt}: ${e.delta >= 0 ? '+' : ''}${e.delta} (${e.reason}) -> ${e.value}/100`
+        )
+        .join('\n')
     }
     default:
       throw new Error(`Unknown builtin tool: ${name}`)

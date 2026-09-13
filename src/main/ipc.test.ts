@@ -57,6 +57,7 @@ import type { AppSettings } from '@shared/types'
 import { STUCK_FALLBACK_TEXT } from './agent/loop'
 import { getRapport, resetRapport } from './rapport'
 import { clearMemories, getMemories, saveMemory } from './memory'
+import { clearConversation, getTranscript } from './conversation'
 import { settingsStore } from './store'
 import { registerIpcHandlers, startAmbientTimer } from './ipc'
 
@@ -127,6 +128,7 @@ beforeEach(() => {
   setStoreSettings()
   resetRapport()
   clearMemories()
+  clearConversation()
   BrowserWindowMock.instances.length = 0
   new BrowserWindow()
   createProvider.mockClear()
@@ -156,9 +158,12 @@ describe('registerIpcHandlers', () => {
       IPC.windowToggleAlwaysOnTop,
       IPC.rapportGet,
       IPC.rapportReset,
+      IPC.rapportHistoryGet,
       IPC.memoriesGet,
       IPC.memoriesDelete,
       IPC.memoriesClear,
+      IPC.conversationGet,
+      IPC.conversationClear,
       IPC.logsGetPath,
       IPC.logsOpenFolder
     ]) {
@@ -470,6 +475,40 @@ describe('memory handlers', () => {
     const afterClear = getHandleHandler(IPC.memoriesClear)()
     expect(afterClear).toEqual([])
     expect(getMemories()).toEqual([])
+  })
+})
+
+describe('conversation handlers', () => {
+  it('chat:send appends the user message and a real reply to the transcript', async () => {
+    runAgentTurn.mockResolvedValueOnce({ text: 'Hello!', history: [] })
+    const handler = getHandleHandler(IPC.chatSend)
+    await handler(fakeEvent(), 'hi there')
+
+    expect(getTranscript()).toMatchObject([
+      { role: 'user', text: 'hi there' },
+      { role: 'assistant', text: 'Hello!' }
+    ])
+  })
+
+  it('conversation:get returns the persisted transcript', async () => {
+    runAgentTurn.mockResolvedValueOnce({ text: 'Hello!', history: [] })
+    await getHandleHandler(IPC.chatSend)(fakeEvent(), 'hi there')
+
+    expect(getHandleHandler(IPC.conversationGet)()).toMatchObject([
+      { role: 'user', text: 'hi there' },
+      { role: 'assistant', text: 'Hello!' }
+    ])
+  })
+
+  it('conversation:clear empties the transcript and notifies the renderer', async () => {
+    runAgentTurn.mockResolvedValueOnce({ text: 'Hello!', history: [] })
+    await getHandleHandler(IPC.chatSend)(fakeEvent(), 'hi there')
+
+    await getHandleHandler(IPC.conversationClear)(fakeEvent())
+
+    expect(getTranscript()).toEqual([])
+    const win = BrowserWindowMock.instances[0]
+    expect(win.webContents.send).toHaveBeenCalledWith(IPC.conversationCleared)
   })
 })
 

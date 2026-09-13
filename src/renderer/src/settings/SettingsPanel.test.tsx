@@ -145,11 +145,46 @@ describe('SettingsPanel', () => {
       expect(fake.api.rapport.reset).toHaveBeenCalled()
       await waitFor(() => expect(screen.getByText(/Rapport: 100\/100/)).toBeInTheDocument())
     })
+
+    it('lists recent rapport events with their reasons', async () => {
+      setup({
+        rapportHistory: [
+          { delta: -8, reason: 'was rude', value: 42, createdAt: '2026-01-01T00:00:00.000Z' }
+        ]
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText(/-8 \(was rude\)/)
+    })
+  })
+
+  describe('conversation', () => {
+    it('does nothing when the clear confirmation is declined', async () => {
+      const fake = setup()
+      vi.stubGlobal(
+        'confirm',
+        vi.fn(() => false)
+      )
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      expect(fake.api.conversation.clear).not.toHaveBeenCalled()
+    })
+
+    it('clears the conversation when confirmed', async () => {
+      const fake = setup()
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      await waitFor(() => expect(fake.api.conversation.clear).toHaveBeenCalled())
+      expect(screen.getByText(/Cleared/)).toBeInTheDocument()
+    })
   })
 
   describe('memories', () => {
-    function memory(id: string, content: string): MemoryEntry {
-      return { id, content, createdAt: new Date().toISOString() }
+    function memory(id: string, content: string, kind: MemoryEntry['kind'] = 'fact'): MemoryEntry {
+      return { id, content, kind, createdAt: new Date().toISOString() }
     }
 
     it('shows an empty-state hint and no Clear All button when there are none', async () => {
@@ -171,6 +206,17 @@ describe('SettingsPanel', () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Forget this' })[0])
       expect(fake.api.memories.delete).toHaveBeenCalledWith('2')
       await screen.findByText('Memories (1)')
+    })
+
+    it('shows a kind badge for a non-default kind but not for a plain fact', async () => {
+      setup({
+        memories: [memory('1', 'likes hiking', 'preference'), memory('2', 'lives in Seattle')]
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Memories (2)')
+
+      expect(screen.getByText('preference')).toBeInTheDocument()
+      expect(screen.getByText('lives in Seattle').textContent).toBe('lives in Seattle')
     })
 
     it('clears all memories when Clear All is confirmed', async () => {

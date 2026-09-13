@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import type { MemoryEntry } from '@shared/types'
+import type { MemoryEntry, MemoryKind } from '@shared/types'
 import { settingsStore } from './store'
 import { log } from './logger'
 
 const MAX_MEMORIES = 200
+// When a save would push the store past MAX_MEMORIES, the oldest batch of
+// this size is condensed into a single archived entry rather than dropped -
+// see consolidateIfNeeded.
+const CONSOLIDATE_BATCH = 20
 const PROMPT_LIMIT = 20
 // The model writes memory content itself, and every memory is spliced back
 // into the system prompt on future turns - cap each one so a single stray
@@ -13,8 +17,16 @@ const MAX_MEMORY_CHARS = 500
 // Total characters the recent-memory block may contribute to the prompt.
 const PROMPT_CHAR_BUDGET = 4000
 
+const MEMORY_KINDS: readonly MemoryKind[] = ['fact', 'preference', 'event', 'relationship']
+
+function sanitizeKind(kind: unknown): MemoryKind {
+  return MEMORY_KINDS.includes(kind as MemoryKind) ? (kind as MemoryKind) : 'fact'
+}
+
 export function getMemories(): MemoryEntry[] {
-  return settingsStore.get('memories', [])
+  // Normalizes entries saved before `kind` existed, so old data on disk
+  // doesn't break callers that expect it to always be present.
+  return settingsStore.get('memories', []).map((m) => ({ ...m, kind: sanitizeKind(m.kind) }))
 }
 
 /** Collapse whitespace and strip control characters (so a memory can't fake
@@ -27,15 +39,34 @@ function sanitizeMemoryContent(content: string): string {
   return oneLine.length > MAX_MEMORY_CHARS ? `${oneLine.slice(0, MAX_MEMORY_CHARS)}…` : oneLine
 }
 
-export function saveMemory(content: string): MemoryEntry {
+/** Once the store would exceed MAX_MEMORIES, don't just drop the oldest
+ * ones - condense the oldest CONSOLIDATE_BATCH into a single archived entry
+ * so old information degrades into a compressed note instead of vanishing
+ * outright. Deliberately deterministic (string concatenation, not another
+ * LLM call) to keep this module's persistence logic simple and synchronous. */
+function consolidateIfNeeded(memories: MemoryEntry[]): MemoryEntry[] {
+  if (memories.length <= MAX_MEMORIES) return memories
+  const toArchive = memories.slice(0, CONSOLIDATE_BATCH)
+  const rest = memories.slice(CONSOLIDATE_BATCH)
+  const archived: MemoryEntry = {
+    id: randomUUID(),
+    content: sanitizeMemoryContent(`Archived: ${toArchive.map((m) => m.content).join(' | ')}`),
+    kind: 'event',
+    createdAt: toArchive[0].createdAt
+  }
+  return [archived, ...rest]
+}
+
+export function saveMemory(content: string, kind?: MemoryKind): MemoryEntry {
   const entry: MemoryEntry = {
     id: randomUUID(),
     content: sanitizeMemoryContent(content),
+    kind: sanitizeKind(kind),
     createdAt: new Date().toISOString()
   }
-  const memories = [...getMemories(), entry].slice(-MAX_MEMORIES)
+  const memories = consolidateIfNeeded([...getMemories(), entry])
   settingsStore.set('memories', memories)
-  log.info('memory', `Saved: ${entry.content}`)
+  log.info('memory', `Saved (${entry.kind}): ${entry.content}`)
   return entry
 }
 
@@ -69,7 +100,7 @@ export function formatMemoriesForPrompt(): string {
   const lines: string[] = []
   let used = 0
   for (const m of memories.slice(-PROMPT_LIMIT).reverse()) {
-    const line = `- ${m.content}`
+    const line = m.kind === 'fact' ? `- ${m.content}` : `- (${m.kind}) ${m.content}`
     if (used + line.length > PROMPT_CHAR_BUDGET) break
     lines.push(line)
     used += line.length + 1

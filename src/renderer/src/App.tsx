@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FacePackId } from '@shared/types'
 import { FaceStage } from './face/FaceStage'
 import { ChatInput } from './chat/ChatInput'
+import { Transcript } from './chat/Transcript'
 import { useAssistant } from './chat/useAssistant'
 import { SettingsPanel } from './settings/SettingsPanel'
 import { unlockAudio } from './audio/sfx'
@@ -20,8 +21,6 @@ function App(): React.JSX.Element {
     if (settingsOpen) return
     window.verity.settings.get().then((s) => setFacePack(s.facePack))
   }, [settingsOpen])
-
-  const lastAssistantEntry = [...entries].reverse().find((e) => e.role !== 'user')
 
   return (
     <div className="app-shell">
@@ -44,12 +43,11 @@ function App(): React.JSX.Element {
               app-shell's total content height, and since it's centered
               vertically, the ball itself would visibly shift each time. */}
           <div className={`expand-panel${expanded ? '' : ' expand-panel-hidden'}`}>
+            <Transcript entries={entries} />
+
             <div className="status-line">
               {thinking && !activeTool && <span className="status-pill">thinking…</span>}
               {activeTool && <span className="status-pill">using {activeTool}…</span>}
-              {!thinking && !activeTool && lastAssistantEntry && (
-                <span className="status-text">{lastAssistantEntry.text}</span>
-              )}
             </div>
 
             <ChatInput disabled={thinking || !expanded} onSend={send} />

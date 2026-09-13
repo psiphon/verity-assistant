@@ -79,15 +79,39 @@ export interface TtsAudio {
   data: Uint8Array
 }
 
+export type MemoryKind = 'fact' | 'preference' | 'event' | 'relationship'
+
 export interface MemoryEntry {
   id: string
   content: string
+  kind: MemoryKind
   createdAt: string
 }
 
 export interface RapportState {
   value: number
   tierLabel: string
+}
+
+/** One rapport adjustment - persisted separately from the running score
+ * itself (see src/main/rapport.ts) so Verity can reference specific past
+ * incidents, not just the current number. */
+export interface RapportEvent {
+  delta: number
+  reason: string
+  /** The resulting score right after this event was applied. */
+  value: number
+  createdAt: string
+}
+
+/** A single line of the persisted, display-oriented conversation log (see
+ * src/main/conversation.ts) - distinct from the LLM's own working history,
+ * which also carries tool-call/tool-result payloads this doesn't need. */
+export interface TranscriptEntry {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  text: string
+  createdAt: string
 }
 
 export interface McpServerStatus {

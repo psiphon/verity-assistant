@@ -11,6 +11,8 @@ import {
   saveMemory,
   searchMemories
 } from './memory'
+import { settingsStore } from './store'
+import type { MemoryEntry, MemoryKind } from '@shared/types'
 
 describe('memory', () => {
   beforeEach(() => {
@@ -35,12 +37,39 @@ describe('memory', () => {
     expect(getMemories().map((m) => m.content)).toEqual(['first fact', 'second fact'])
   })
 
-  it('caps stored memories at 200, dropping the oldest', () => {
+  it('archives the oldest batch instead of silently dropping them once past the cap', () => {
     for (let i = 0; i < 205; i++) saveMemory(`fact ${i}`)
     const memories = getMemories()
-    expect(memories).toHaveLength(200)
-    expect(memories[0].content).toBe('fact 5')
+    // Consolidation trades exact-200 for "nothing outright lost" - the
+    // oldest batch gets compressed into one archived entry rather than
+    // deleted, so the final count is well under 205 but not a hard 200.
+    expect(memories.length).toBeLessThan(205)
+    expect(memories[0].kind).toBe('event')
+    expect(memories[0].content).toContain('Archived:')
+    expect(memories[0].content).toContain('fact 0')
     expect(memories[memories.length - 1].content).toBe('fact 204')
+  })
+
+  describe('kind', () => {
+    it('defaults to fact when none is given', () => {
+      expect(saveMemory('a fact').kind).toBe('fact')
+    })
+
+    it('accepts a valid kind', () => {
+      expect(saveMemory('likes tea', 'preference').kind).toBe('preference')
+    })
+
+    it('falls back to fact for an invalid kind', () => {
+      expect(saveMemory('x', 'bogus' as MemoryKind).kind).toBe('fact')
+    })
+
+    it('normalizes memories saved before kind existed', () => {
+      const legacy = [
+        { id: '1', content: 'old memory', createdAt: new Date().toISOString() }
+      ] as unknown as MemoryEntry[]
+      settingsStore.set('memories', legacy)
+      expect(getMemories()[0].kind).toBe('fact')
+    })
   })
 
   describe('searchMemories', () => {
@@ -103,6 +132,12 @@ describe('memory', () => {
       expect(lines).toHaveLength(20)
       expect(lines[0]).toBe('- fact 5')
       expect(lines[19]).toBe('- fact 24')
+    })
+
+    it('prefixes a non-default kind but leaves a plain fact unprefixed', () => {
+      saveMemory('likes tea')
+      saveMemory('hates spiders', 'preference')
+      expect(formatMemoriesForPrompt()).toBe('- likes tea\n- (preference) hates spiders')
     })
 
     it('stays within the prompt character budget even with many long memories', () => {

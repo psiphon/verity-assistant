@@ -1,4 +1,11 @@
-import type { AppSettings, McpServerStatus, RapportState, MemoryEntry } from '@shared/types'
+import type {
+  AppSettings,
+  McpServerStatus,
+  RapportState,
+  RapportEvent,
+  MemoryEntry,
+  TranscriptEntry
+} from '@shared/types'
 
 /**
  * Lets `npm run dev` be opened directly in a regular browser tab (no Electron
@@ -34,16 +41,38 @@ export function installDevMockVerityIfNeeded(): void {
   }
   const statuses: McpServerStatus[] = []
   let rapport: RapportState = { value: 100, tierLabel: 'Human Facade' }
+  let rapportHistory: RapportEvent[] = []
   let memories: MemoryEntry[] = [
-    { id: '1', content: 'Dev mock memory example', createdAt: new Date().toISOString() }
+    {
+      id: '1',
+      content: 'Dev mock memory example',
+      kind: 'fact',
+      createdAt: new Date().toISOString()
+    }
   ]
+  let transcript: TranscriptEntry[] = []
 
   const rapportListeners = new Set<(r: RapportState) => void>()
   const messageListeners = new Set<(t: string) => void>()
   const thinkingListeners = new Set<(t: boolean) => void>()
+  const conversationClearedListeners = new Set<() => void>()
 
-  function setRapport(value: number): void {
+  function pushTranscript(role: TranscriptEntry['role'], text: string): void {
+    transcript = [
+      ...transcript,
+      { id: crypto.randomUUID(), role, text, createdAt: new Date().toISOString() }
+    ]
+  }
+
+  function setRapport(value: number, reason = 'dev mock'): void {
+    const delta = value - rapport.value
     rapport = { value: Math.max(0, Math.min(100, value)), tierLabel: tierLabelFor(value) }
+    if (delta !== 0) {
+      rapportHistory = [
+        { delta, reason, value: rapport.value, createdAt: new Date().toISOString() },
+        ...rapportHistory
+      ]
+    }
     rapportListeners.forEach((cb) => cb(rapport))
   }
 
@@ -53,13 +82,17 @@ export function installDevMockVerityIfNeeded(): void {
       // preview all four resting tiers + both talking faces without wiring
       // up a real provider.
       send: async (text: string) => {
+        pushTranscript('user', text)
         thinkingListeners.forEach((cb) => cb(true))
         await new Promise((r) => setTimeout(r, 500))
         thinkingListeners.forEach((cb) => cb(false))
         const lower = text.toLowerCase()
-        if (/(rude|hate|stupid|shut up)/.test(lower)) setRapport(rapport.value - 20)
-        else if (/(thanks|sorry|kind|nice|please)/.test(lower)) setRapport(rapport.value + 15)
-        messageListeners.forEach((cb) => cb(`(dev mock) You said: "${text}"`))
+        if (/(rude|hate|stupid|shut up)/.test(lower)) setRapport(rapport.value - 20, 'was rude')
+        else if (/(thanks|sorry|kind|nice|please)/.test(lower))
+          setRapport(rapport.value + 15, 'was kind')
+        const reply = `(dev mock) You said: "${text}"`
+        pushTranscript('assistant', reply)
+        messageListeners.forEach((cb) => cb(reply))
       },
       onThinking: (cb) => {
         thinkingListeners.add(cb)
@@ -76,9 +109,11 @@ export function installDevMockVerityIfNeeded(): void {
     rapport: {
       get: async () => rapport,
       reset: async () => {
-        setRapport(100)
+        setRapport(100, 'reset')
+        rapportHistory = []
         return rapport
       },
+      getHistory: async () => rapportHistory,
       onChanged: (cb) => {
         rapportListeners.add(cb)
         return () => rapportListeners.delete(cb)
@@ -93,6 +128,17 @@ export function installDevMockVerityIfNeeded(): void {
       clear: async () => {
         memories = []
         return memories
+      }
+    },
+    conversation: {
+      get: async () => transcript,
+      clear: async () => {
+        transcript = []
+        conversationClearedListeners.forEach((cb) => cb())
+      },
+      onCleared: (cb) => {
+        conversationClearedListeners.add(cb)
+        return () => conversationClearedListeners.delete(cb)
       }
     },
     settings: {

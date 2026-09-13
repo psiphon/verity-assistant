@@ -235,6 +235,33 @@ describe('callBuiltinTool', () => {
       const result = await callBuiltinTool('recall_memories', { query: 'nope' }, fakeCtx())
       expect(result).toBe('(no matching memories)')
     })
+
+    it('tags a memory with the given kind and shows it on recall', async () => {
+      await callBuiltinTool(
+        'save_memory',
+        { content: 'hates spiders', kind: 'preference' },
+        fakeCtx()
+      )
+      const recallResult = await callBuiltinTool('recall_memories', { query: 'spiders' }, fakeCtx())
+      expect(recallResult).toBe('- (preference) hates spiders')
+    })
+  })
+
+  describe('recall_rapport_history', () => {
+    it('reports no history distinctly', async () => {
+      const result = await callBuiltinTool('recall_rapport_history', {}, fakeCtx())
+      expect(result).toBe('(no rapport history yet)')
+    })
+
+    it('lists recorded events, most recent first', async () => {
+      await callBuiltinTool('adjust_rapport', { delta: -8, reason: 'was rude' }, fakeCtx())
+      await callBuiltinTool('adjust_rapport', { delta: 5, reason: 'apologized' }, fakeCtx())
+
+      const result = await callBuiltinTool('recall_rapport_history', {}, fakeCtx())
+      const lines = (result as string).split('\n')
+      expect(lines[0]).toContain('+5 (apologized) -> 97/100')
+      expect(lines[1]).toContain('-8 (was rude) -> 92/100')
+    })
   })
 
   it('routes a filesystem tool name through to the filesystem module', async () => {

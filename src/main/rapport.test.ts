@@ -7,6 +7,7 @@ import {
   RAPPORT_TIERS,
   adjustRapport,
   getRapport,
+  getRapportHistory,
   getTier,
   onRapportChanged,
   resetRapport
@@ -69,6 +70,28 @@ describe('rapport', () => {
     adjustRapport(-1, 'x')
     expect(a).toHaveBeenCalledWith(99)
     expect(b).toHaveBeenCalledWith(99)
+  })
+
+  describe('getRapportHistory', () => {
+    it('starts empty', () => {
+      expect(getRapportHistory()).toEqual([])
+    })
+
+    it('records each adjustment, most recent first, with the resulting value', () => {
+      adjustRapport(-10, 'curt')
+      adjustRapport(5, 'apology')
+
+      const history = getRapportHistory()
+      expect(history).toHaveLength(2)
+      expect(history[0]).toMatchObject({ delta: 5, reason: 'apology', value: 95 })
+      expect(history[1]).toMatchObject({ delta: -10, reason: 'curt', value: 90 })
+    })
+
+    it('is cleared by resetRapport, matching its "forgets everything" contract', () => {
+      adjustRapport(-20, 'rude')
+      resetRapport()
+      expect(getRapportHistory()).toEqual([])
+    })
   })
 
   describe('getTier', () => {

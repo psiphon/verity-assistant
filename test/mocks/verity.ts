@@ -1,5 +1,12 @@
 import { vi } from 'vitest'
-import type { AppSettings, MemoryEntry, McpServerStatus, RapportState } from '@shared/types'
+import type {
+  AppSettings,
+  MemoryEntry,
+  McpServerStatus,
+  RapportState,
+  RapportEvent,
+  TranscriptEntry
+} from '@shared/types'
 
 export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
@@ -44,7 +51,9 @@ function subscribable<T extends unknown[]>(): {
 export interface FakeVerityState {
   settings: AppSettings
   rapport: RapportState
+  rapportHistory: RapportEvent[]
   memories: MemoryEntry[]
+  transcript: TranscriptEntry[]
 }
 
 export interface FakeVerity {
@@ -59,6 +68,7 @@ export interface FakeVerity {
     rapportChanged: (v: RapportState) => void
     openSettings: () => void
     mcpStatuses: (v: McpServerStatus[]) => void
+    conversationCleared: () => void
   }
 }
 
@@ -75,11 +85,14 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
   const rapportChanged = subscribable<[RapportState]>()
   const openSettings = subscribable<[]>()
   const mcpStatuses = subscribable<[McpServerStatus[]]>()
+  const conversationCleared = subscribable<[]>()
 
   const state: FakeVerityState = {
     settings: overrides.settings ?? defaultSettings(),
     rapport: overrides.rapport ?? { value: 100, tierLabel: 'Human Facade' },
-    memories: overrides.memories ?? []
+    rapportHistory: overrides.rapportHistory ?? [],
+    memories: overrides.memories ?? [],
+    transcript: overrides.transcript ?? []
   }
 
   const api: Window['verity'] = {
@@ -97,6 +110,7 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
         state.rapport = { value: 100, tierLabel: 'Human Facade' }
         return state.rapport
       }),
+      getHistory: vi.fn(async () => state.rapportHistory),
       onChanged: rapportChanged.add
     },
     memories: {
@@ -109,6 +123,13 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
         state.memories = []
         return state.memories
       })
+    },
+    conversation: {
+      get: vi.fn(async () => state.transcript),
+      clear: vi.fn(async () => {
+        state.transcript = []
+      }),
+      onCleared: conversationCleared.add
     },
     settings: {
       get: vi.fn(async () => state.settings),
@@ -148,7 +169,8 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       playSound: playSound.emit,
       rapportChanged: rapportChanged.emit,
       openSettings: openSettings.emit,
-      mcpStatuses: mcpStatuses.emit
+      mcpStatuses: mcpStatuses.emit,
+      conversationCleared: conversationCleared.emit
     }
   }
 }
