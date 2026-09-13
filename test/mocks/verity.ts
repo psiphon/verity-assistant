@@ -36,6 +36,7 @@ export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettin
     windowY: null,
     hotkeyEnabled: true,
     hotkeyAccelerator: 'CommandOrControl+Shift+V',
+    autoUpdateCheckEnabled: true,
     ...overrides
   }
 }
@@ -159,6 +160,9 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
         state.reminders = state.reminders.filter((r) => r.id !== id)
         return state.reminders
       })
+    },
+    updater: {
+      checkNow: vi.fn(async () => {})
     },
     settings: {
       get: vi.fn(async () => state.settings),

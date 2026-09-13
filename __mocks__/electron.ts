@@ -105,6 +105,7 @@ export class Notification {
   static isSupported = vi.fn(() => true)
   static instances: Notification[] = []
   show = vi.fn()
+  on = vi.fn()
   constructor(public opts: { title?: string; body?: string }) {
     Notification.instances.push(this)
   }

@@ -109,6 +109,29 @@ describe('SettingsPanel', () => {
     })
   })
 
+  describe('auto-update', () => {
+    it('checks now on click and shows a checking hint', async () => {
+      const fake = setup()
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check Now' }))
+      expect(fake.api.updater.checkNow).toHaveBeenCalled()
+      expect(screen.getByText(/you'll get a native notification/)).toBeInTheDocument()
+    })
+
+    it('toggles the launch-check setting', async () => {
+      setup({ settings: defaultSettings({ autoUpdateCheckEnabled: true }) })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+
+      const checkbox = screen.getByLabelText('Check for updates on launch') as HTMLInputElement
+      expect(checkbox.checked).toBe(true)
+      fireEvent.click(checkbox)
+      expect(checkbox.checked).toBe(false)
+    })
+  })
+
   describe('ambient check-ins', () => {
     it('hides the interval inputs until enabled, then shows the saved defaults', async () => {
       setup()

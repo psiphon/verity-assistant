@@ -30,7 +30,8 @@ const defaults: AppSettings = {
   windowX: null,
   windowY: null,
   hotkeyEnabled: true,
-  hotkeyAccelerator: 'CommandOrControl+Shift+V'
+  hotkeyAccelerator: 'CommandOrControl+Shift+V',
+  autoUpdateCheckEnabled: true
 }
 
 export const settingsStore = new Store<AppSettings>({

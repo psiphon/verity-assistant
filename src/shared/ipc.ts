@@ -20,6 +20,7 @@ export const IPC = {
   activityClear: 'activity:clear',
   remindersGet: 'reminders:get',
   remindersCancel: 'reminders:cancel',
+  updaterCheckNow: 'updater:check-now',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   ttsSynthesize: 'tts:synthesize',

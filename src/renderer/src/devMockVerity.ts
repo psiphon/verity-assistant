@@ -50,7 +50,8 @@ export function installDevMockVerityIfNeeded(): void {
     windowX: null,
     windowY: null,
     hotkeyEnabled: true,
-    hotkeyAccelerator: 'CommandOrControl+Shift+V'
+    hotkeyAccelerator: 'CommandOrControl+Shift+V',
+    autoUpdateCheckEnabled: true
   }
   const statuses: McpServerStatus[] = [
     {
@@ -197,6 +198,9 @@ export function installDevMockVerityIfNeeded(): void {
         reminders = reminders.filter((r) => r.id !== id)
         return reminders
       }
+    },
+    updater: {
+      checkNow: async () => {}
     },
     settings: {
       get: async () => settings,

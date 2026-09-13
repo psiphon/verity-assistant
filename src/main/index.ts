@@ -7,6 +7,7 @@ import { settingsStore } from './store'
 import { initLogger, log } from './logger'
 import { initReminders } from './reminders'
 import { applyHotkeySettings, toggleVisibility } from './hotkey'
+import { checkForUpdates } from './updater'
 import { IPC } from '@shared/ipc'
 import { WINDOW_SIZE } from './windowConfig'
 
@@ -150,6 +151,13 @@ app.whenReady().then(async () => {
   const win = createWindow()
   createTray(win)
   applyHotkeySettings()
+
+  // Dev builds have no publish feed configured (no GitHub release for the
+  // in-progress version) - checking there would just be a noisy, pointless
+  // network call and error log on every launch.
+  if (app.isPackaged && settingsStore.get('autoUpdateCheckEnabled')) {
+    checkForUpdates()
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -83,6 +83,10 @@ export interface AppSettings {
    * "CommandOrControl+Shift+V"). */
   hotkeyEnabled: boolean
   hotkeyAccelerator: string
+  /** Whether to silently check GitHub Releases for a newer version on
+   * launch. Only ever checks + notifies (with a link to the release) -
+   * never downloads or installs anything automatically. */
+  autoUpdateCheckEnabled: boolean
 }
 
 /** Synthesized audio handed back from the main process over IPC. `data` is the

@@ -15,6 +15,7 @@ import { getRapport, getTier, resetRapport, onRapportChanged, getRapportHistory 
 import { logActivity, getActivity, clearActivity } from './activity'
 import { getReminders, cancelReminder } from './reminders'
 import { applyHotkeySettings } from './hotkey'
+import { checkForUpdates } from './updater'
 import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } from './memory'
 import {
   trimHistory,
@@ -355,6 +356,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.remindersCancel, (_e, id: string) => {
     log.info('reminders', `Manual cancel requested from Settings: ${id}`)
     return cancelReminder(id)
+  })
+
+  ipcMain.handle(IPC.updaterCheckNow, () => {
+    log.info('updater', 'Manual check requested from Settings')
+    checkForUpdates(true)
   })
 
   ipcMain.handle(IPC.logsGetPath, () => getLogPath())

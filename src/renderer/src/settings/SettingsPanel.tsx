@@ -35,6 +35,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [hotkeyError, setHotkeyError] = useState(false)
+  const [updateCheckRequested, setUpdateCheckRequested] = useState(false)
   const [mcpStatuses, setMcpStatuses] = useState<McpServerStatus[]>([])
 
   useEffect(() => {
@@ -284,6 +285,32 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             CommandOrControl+Shift+V).
           </p>
         )}
+      </section>
+
+      <section>
+        <div className="settings-row-header">
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.autoUpdateCheckEnabled}
+              onChange={(e) => update({ autoUpdateCheckEnabled: e.target.checked })}
+            />
+            Check for updates on launch
+          </label>
+          <button
+            onClick={() => {
+              window.verity.updater.checkNow()
+              setUpdateCheckRequested(true)
+            }}
+          >
+            Check Now
+          </button>
+        </div>
+        <p className="hint">
+          {updateCheckRequested
+            ? "Checking - you'll get a native notification if a newer version is found."
+            : 'Silently checks GitHub Releases for a newer version - never downloads or installs anything automatically, just tells you and links to the release page.'}
+        </p>
       </section>
 
       <section>
@@ -612,7 +639,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           Audio voice engine, each spoken reply&apos;s text is sent to the TTS server URL you
           configure (local by default). The microphone button (when shown) sends your speech to the
           browser&apos;s built-in speech-recognition service to transcribe it - only while
-          you&apos;re actively using it, never in the background.
+          you&apos;re actively using it, never in the background. If update checks are on, Verity
+          contacts GitHub&apos;s public release API on launch (and whenever you click &quot;Check
+          Now&quot;) - no personal data is sent, just a check for a newer version number.
         </p>
       </section>
 

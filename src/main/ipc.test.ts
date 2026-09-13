@@ -116,6 +116,7 @@ function baseSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     windowY: null,
     hotkeyEnabled: true,
     hotkeyAccelerator: 'CommandOrControl+Shift+V',
+    autoUpdateCheckEnabled: true,
     ...overrides
   }
 }

@@ -83,6 +83,9 @@ const api = {
     get: (): Promise<Reminder[]> => ipcRenderer.invoke(IPC.remindersGet),
     cancel: (id: string): Promise<Reminder[]> => ipcRenderer.invoke(IPC.remindersCancel, id)
   },
+  updater: {
+    checkNow: (): Promise<void> => ipcRenderer.invoke(IPC.updaterCheckNow)
+  },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (settings: AppSettings): Promise<{ hotkeyRegistered: boolean }> =>
