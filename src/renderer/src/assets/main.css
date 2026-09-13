@@ -104,6 +104,18 @@
   font-style: italic;
 }
 
+.transcript-cursor {
+  display: inline-block;
+  margin-left: 1px;
+  animation: transcript-cursor-blink 1s step-start infinite;
+}
+
+@keyframes transcript-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 .chat-input {
   /* The send button floats over the input's right edge instead of taking
      its own flex slot, so the input spans the full row width - matching

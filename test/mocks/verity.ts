@@ -71,6 +71,7 @@ export interface FakeVerity {
   emit: {
     thinking: (v: boolean) => void
     message: (v: string) => void
+    messageDelta: (v: string) => void
     error: (v: string) => void
     toolCall: (c: { name: string; input: Record<string, unknown> }) => void
     playSound: (v: string) => void
@@ -88,6 +89,7 @@ export interface FakeVerity {
 export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): FakeVerity {
   const thinking = subscribable<[boolean]>()
   const message = subscribable<[string]>()
+  const messageDelta = subscribable<[string]>()
   const error = subscribable<[string]>()
   const toolCall = subscribable<[{ name: string; input: Record<string, unknown> }]>()
   const playSound = subscribable<[string]>()
@@ -112,6 +114,7 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       send: vi.fn(async () => {}),
       onThinking: thinking.add,
       onMessage: message.add,
+      onMessageDelta: messageDelta.add,
       onError: error.add,
       onToolCall: toolCall.add,
       onPlaySound: playSound.add
@@ -191,6 +194,7 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
     emit: {
       thinking: thinking.emit,
       message: message.emit,
+      messageDelta: messageDelta.emit,
       error: error.emit,
       toolCall: toolCall.emit,
       playSound: playSound.emit,

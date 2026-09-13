@@ -38,6 +38,7 @@ function mockAssistant(overrides: Partial<ReturnType<typeof useAssistant>> = {})
   const send = vi.fn()
   vi.mocked(useAssistant).mockReturnValue({
     entries: [],
+    streamingText: '',
     faceState: 'resting',
     rapport: 100,
     thinking: false,

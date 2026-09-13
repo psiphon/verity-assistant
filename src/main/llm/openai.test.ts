@@ -142,4 +142,58 @@ describe('OpenAIProvider', () => {
       }
     ])
   })
+
+  describe('streaming (onTextDelta given)', () => {
+    it('forwards text deltas as they arrive and still resolves the full result', async () => {
+      create.mockResolvedValue([
+        { choices: [{ delta: { content: 'Hello' } }] },
+        { choices: [{ delta: { content: ' there.' } }] }
+      ])
+      const provider = new OpenAIProvider({ apiKey: 'k' })
+      const onTextDelta = vi.fn()
+      const result = await provider.chat({ system: 'sys', messages: [], tools: [], onTextDelta })
+
+      expect(onTextDelta.mock.calls).toEqual([['Hello'], [' there.']])
+      expect(result).toEqual({ text: 'Hello there.', toolCalls: [], stopReason: 'end' })
+      expect(create.mock.calls[0][0]).toMatchObject({ stream: true })
+    })
+
+    it('accumulates fragmented tool-call arguments across chunks by index', async () => {
+      create.mockResolvedValue([
+        {
+          choices: [
+            { delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'get_weather' } }] } }
+          ]
+        },
+        {
+          choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"loc' } }] } }]
+        },
+        {
+          choices: [
+            { delta: { tool_calls: [{ index: 0, function: { arguments: 'ation":"NYC"}' } }] } }
+          ]
+        }
+      ])
+      const provider = new OpenAIProvider({ apiKey: 'k' })
+      const result = await provider.chat({
+        system: 'sys',
+        messages: [],
+        tools: [],
+        onTextDelta: vi.fn()
+      })
+
+      expect(result).toEqual({
+        text: '',
+        toolCalls: [{ id: 'c1', name: 'get_weather', input: { location: 'NYC' } }],
+        stopReason: 'tool_use'
+      })
+    })
+
+    it('uses the non-streaming call when onTextDelta is not given', async () => {
+      create.mockResolvedValue(response({ content: 'ok' }))
+      const provider = new OpenAIProvider({ apiKey: 'k' })
+      await provider.chat({ system: 'sys', messages: [], tools: [] })
+      expect(create.mock.calls[0][0].stream).toBeUndefined()
+    })
+  })
 })

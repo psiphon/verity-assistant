@@ -242,7 +242,8 @@ export function registerIpcHandlers(): void {
             }
             logActivity(name, input)
             win?.webContents.send(IPC.chatToolCall, { name, input })
-          }
+          },
+          onTextDelta: (chunk) => win?.webContents.send(IPC.chatMessageDelta, chunk)
         }
       )
       history = trimHistory(newHistory)

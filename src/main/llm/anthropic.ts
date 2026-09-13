@@ -34,7 +34,7 @@ export class AnthropicProvider implements LLMProvider {
       }
     }
 
-    const response = await this.client.messages.create({
+    const params = {
       model: this.model,
       max_tokens: 1024,
       system: request.system,
@@ -44,7 +44,16 @@ export class AnthropicProvider implements LLMProvider {
         description: t.description,
         input_schema: t.inputSchema as Anthropic.Tool.InputSchema
       }))
-    })
+    }
+
+    let response: Anthropic.Message
+    if (request.onTextDelta) {
+      const stream = this.client.messages.stream(params)
+      stream.on('text', (delta) => request.onTextDelta!(delta))
+      response = await stream.finalMessage()
+    } else {
+      response = await this.client.messages.create(params)
+    }
 
     let text = ''
     const toolCalls: ToolCallRequest[] = []

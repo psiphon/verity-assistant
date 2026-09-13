@@ -25,6 +25,11 @@ const api = {
       ipcRenderer.on(IPC.chatMessage, listener)
       return () => ipcRenderer.removeListener(IPC.chatMessage, listener)
     },
+    onMessageDelta: (cb: (chunk: string) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, chunk: string): void => cb(chunk)
+      ipcRenderer.on(IPC.chatMessageDelta, listener)
+      return () => ipcRenderer.removeListener(IPC.chatMessageDelta, listener)
+    },
     onError: (cb: (message: string) => void): (() => void) => {
       const listener = (_e: Electron.IpcRendererEvent, message: string): void => cb(message)
       ipcRenderer.on(IPC.chatError, listener)

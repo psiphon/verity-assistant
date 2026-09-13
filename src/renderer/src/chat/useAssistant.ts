@@ -13,6 +13,11 @@ function newEntry(role: TranscriptEntry['role'], text: string): TranscriptEntry 
 
 export function useAssistant(): {
   entries: TranscriptEntry[]
+  /** Text streamed in so far for the reply currently in progress, or ''
+   * when nothing is streaming - a "show progress" layer only. The final
+   * `chat:message` event (onMessage below) is still what actually commits
+   * the entry, so this never affects what's persisted. */
+  streamingText: string
   faceState: FaceState
   rapport: number
   thinking: boolean
@@ -20,6 +25,7 @@ export function useAssistant(): {
   send: (text: string) => void
 } {
   const [entries, setEntries] = useState<TranscriptEntry[]>([])
+  const [streamingText, setStreamingText] = useState('')
   const [thinking, setThinking] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [rapport, setRapport] = useState(100)
@@ -43,7 +49,11 @@ export function useAssistant(): {
       window.setTimeout(() => setActiveTool(null), 2500)
     })
     const offPlaySound = window.verity.chat.onPlaySound((name) => playSfx(name as SfxName))
+    const offMessageDelta = window.verity.chat.onMessageDelta((chunk) => {
+      setStreamingText((prev) => prev + chunk)
+    })
     const offMessage = window.verity.chat.onMessage(async (text) => {
+      setStreamingText('')
       setEntries((prev) => [...prev, newEntry('assistant', text)])
       // Fetched fresh each time (not cached) so a voice/rate change saved in
       // Settings takes effect on the very next reply.
@@ -59,6 +69,7 @@ export function useAssistant(): {
       }
     })
     const offError = window.verity.chat.onError((message) => {
+      setStreamingText('')
       setEntries((prev) => [...prev, newEntry('system', `Error: ${message}`)])
     })
     const offConversationCleared = window.verity.conversation.onCleared(() => setEntries([]))
@@ -68,6 +79,7 @@ export function useAssistant(): {
       offRapport()
       offToolCall()
       offPlaySound()
+      offMessageDelta()
       offMessage()
       offError()
       offConversationCleared()
@@ -79,6 +91,7 @@ export function useAssistant(): {
     const trimmed = text.trim()
     if (!trimmed) return
     setEntries((prev) => [...prev, newEntry('user', trimmed)])
+    setStreamingText('')
     cancelSpeech()
     setSpeaking(false)
     window.verity.chat.send(trimmed)
@@ -86,5 +99,5 @@ export function useAssistant(): {
 
   const faceState: FaceState = thinking ? 'thinking' : speaking ? 'talking' : 'resting'
 
-  return { entries, faceState, rapport, thinking, activeTool, send }
+  return { entries, streamingText, faceState, rapport, thinking, activeTool, send }
 }

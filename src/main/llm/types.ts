@@ -19,6 +19,12 @@ export interface ChatRequest {
   system: string
   messages: ChatMessage[]
   tools: ToolDefinition[]
+  /** When given, a provider that supports it streams incremental text
+   * chunks here as they arrive, in addition to still resolving the full
+   * ChatResult once the turn completes - purely a "show progress" layer,
+   * not a change to what's returned. Providers without streaming support
+   * (or a turn that never produces plain text) simply never call it. */
+  onTextDelta?: (chunk: string) => void
 }
 
 export interface ChatResult {

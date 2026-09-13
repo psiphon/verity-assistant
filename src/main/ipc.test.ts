@@ -286,6 +286,20 @@ describe('chat:send', () => {
     })
   })
 
+  it('forwards streamed text deltas to the renderer', async () => {
+    runAgentTurn.mockImplementationOnce(async (_p, _r, _h, _u, _s, events) => {
+      events.onTextDelta('Hel')
+      events.onTextDelta('lo.')
+      return { text: 'Hello.', history: [] }
+    })
+    const handler = getHandleHandler(IPC.chatSend)
+    await handler(fakeEvent(), 'hi')
+
+    const win = BrowserWindowMock.instances[0]
+    expect(win.webContents.send).toHaveBeenCalledWith(IPC.chatMessageDelta, 'Hel')
+    expect(win.webContents.send).toHaveBeenCalledWith(IPC.chatMessageDelta, 'lo.')
+  })
+
   it('logs every tool call to the activity log', async () => {
     runAgentTurn.mockImplementationOnce(async (_p, _r, _h, _u, _s, events) => {
       events.onToolCall('get_current_time', {})

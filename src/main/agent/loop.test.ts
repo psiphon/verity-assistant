@@ -272,4 +272,15 @@ describe('runAgentTurn', () => {
       { role: 'assistant', content: 'Sure.' }
     ])
   })
+
+  it('passes onTextDelta straight through to the provider', async () => {
+    const chat = vi.fn().mockResolvedValue({ text: 'Sure.', toolCalls: [], stopReason: 'end' })
+    const provider: LLMProvider = { id: 'fake', chat }
+    const registry = fakeRegistry([])
+    const onTextDelta = vi.fn()
+
+    await runAgentTurn(provider, registry, [], 'hi', 'sys', { onTextDelta })
+
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ onTextDelta }))
+  })
 })

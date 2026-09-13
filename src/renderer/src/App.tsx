@@ -8,7 +8,7 @@ import { SettingsPanel } from './settings/SettingsPanel'
 import { unlockAudio } from './audio/sfx'
 
 function App(): React.JSX.Element {
-  const { entries, faceState, rapport, thinking, activeTool, send } = useAssistant()
+  const { entries, streamingText, faceState, rapport, thinking, activeTool, send } = useAssistant()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [facePack, setFacePack] = useState<FacePackId>('photos')
@@ -43,7 +43,7 @@ function App(): React.JSX.Element {
               app-shell's total content height, and since it's centered
               vertically, the ball itself would visibly shift each time. */}
           <div className={`expand-panel${expanded ? '' : ' expand-panel-hidden'}`}>
-            <Transcript entries={entries} />
+            <Transcript entries={entries} streamingText={streamingText} />
 
             <div className="status-line">
               {thinking && !activeTool && <span className="status-pill">thinking…</span>}

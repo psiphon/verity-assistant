@@ -117,6 +117,43 @@ describe('useAssistant', () => {
     )
   })
 
+  it('accumulates streaming deltas and clears them once the final message lands', async () => {
+    const fake = createFakeVerity()
+    window.verity = fake.api
+    const { result } = renderHook(() => useAssistant())
+
+    act(() => fake.emit.messageDelta('Hello'))
+    expect(result.current.streamingText).toBe('Hello')
+    act(() => fake.emit.messageDelta(' there.'))
+    expect(result.current.streamingText).toBe('Hello there.')
+
+    await act(async () => {
+      fake.emit.message('Hello there.')
+      await Promise.resolve()
+    })
+    expect(result.current.streamingText).toBe('')
+  })
+
+  it('clears any leftover streaming text when an error arrives instead', () => {
+    const fake = createFakeVerity()
+    window.verity = fake.api
+    const { result } = renderHook(() => useAssistant())
+
+    act(() => fake.emit.messageDelta('partial'))
+    act(() => fake.emit.error('provider unavailable'))
+    expect(result.current.streamingText).toBe('')
+  })
+
+  it('clears any leftover streaming text when a new message is sent', () => {
+    const fake = createFakeVerity()
+    window.verity = fake.api
+    const { result } = renderHook(() => useAssistant())
+
+    act(() => fake.emit.messageDelta('partial'))
+    act(() => result.current.send('new message'))
+    expect(result.current.streamingText).toBe('')
+  })
+
   it('onMessage does not speak when TTS is disabled', async () => {
     const fake = createFakeVerity({ settings: defaultSettings({ ttsEnabled: false }) })
     window.verity = fake.api

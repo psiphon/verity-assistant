@@ -3,6 +3,7 @@ export const IPC = {
   chatThinking: 'chat:thinking',
   chatToolCall: 'chat:tool-call',
   chatMessage: 'chat:message',
+  chatMessageDelta: 'chat:message-delta',
   chatError: 'chat:error',
   chatPlaySound: 'chat:play-sound',
   rapportGet: 'rapport:get',

@@ -84,6 +84,7 @@ export function installDevMockVerityIfNeeded(): void {
 
   const rapportListeners = new Set<(r: RapportState) => void>()
   const messageListeners = new Set<(t: string) => void>()
+  const messageDeltaListeners = new Set<(chunk: string) => void>()
   const thinkingListeners = new Set<(t: boolean) => void>()
   const conversationClearedListeners = new Set<() => void>()
 
@@ -121,6 +122,14 @@ export function installDevMockVerityIfNeeded(): void {
         else if (/(thanks|sorry|kind|nice|please)/.test(lower))
           setRapport(rapport.value + 15, 'was kind')
         const reply = `(dev mock) You said: "${text}"`
+        // Streams word-by-word so the transient "typing" bubble is actually
+        // visible in this preview, matching how a real provider streams.
+        const words = reply.split(' ')
+        for (let i = 0; i < words.length; i++) {
+          const chunk = i === 0 ? words[i] : ` ${words[i]}`
+          messageDeltaListeners.forEach((cb) => cb(chunk))
+          await new Promise((r) => setTimeout(r, 60))
+        }
         pushTranscript('assistant', reply)
         messageListeners.forEach((cb) => cb(reply))
       },
@@ -131,6 +140,10 @@ export function installDevMockVerityIfNeeded(): void {
       onMessage: (cb) => {
         messageListeners.add(cb)
         return () => messageListeners.delete(cb)
+      },
+      onMessageDelta: (cb) => {
+        messageDeltaListeners.add(cb)
+        return () => messageDeltaListeners.delete(cb)
       },
       onError: () => () => {},
       onToolCall: () => () => {},

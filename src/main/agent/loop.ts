@@ -122,6 +122,8 @@ ${recentMemories}`
 
 export interface AgentEvents {
   onToolCall?: (name: string, input: Record<string, unknown>, fallbackParsed?: boolean) => void
+  /** Forwarded straight through to the provider - see ChatRequest.onTextDelta. */
+  onTextDelta?: (chunk: string) => void
 }
 
 export async function runAgentTurn(
@@ -138,7 +140,7 @@ export async function runAgentTurn(
 
   for (let i = 0; i < maxIterations; i++) {
     const result = await withTimeout(
-      provider.chat({ system, messages, tools: toolDefs }),
+      provider.chat({ system, messages, tools: toolDefs, onTextDelta: events.onTextDelta }),
       PROVIDER_TIMEOUT_MS,
       'LLM request'
     )

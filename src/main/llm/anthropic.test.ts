@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { create, constructorCalls, MockAnthropic } = vi.hoisted(() => {
+const { create, stream, constructorCalls, MockAnthropic } = vi.hoisted(() => {
   const create = vi.fn()
+  const stream = vi.fn()
   const constructorCalls: unknown[] = []
   class MockAnthropic {
-    messages = { create }
+    messages = { create, stream }
     constructor(config: unknown) {
       constructorCalls.push(config)
     }
   }
-  return { create, constructorCalls, MockAnthropic }
+  return { create, stream, constructorCalls, MockAnthropic }
 })
 vi.mock('@anthropic-ai/sdk', () => ({ default: MockAnthropic }))
 
@@ -108,5 +109,35 @@ describe('AnthropicProvider', () => {
       { name: 'get_weather', description: 'weather', input_schema: { type: 'object' } }
     ])
     expect(request.system).toBe('sys')
+  })
+
+  describe('streaming (onTextDelta given)', () => {
+    it('forwards text deltas as they arrive and still resolves the full result', async () => {
+      const finalMessage = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'Hello there.' }],
+        stop_reason: 'end_turn'
+      })
+      const on = vi.fn()
+      stream.mockReturnValue({ on, finalMessage })
+
+      const provider = new AnthropicProvider({ apiKey: 'k' })
+      const onTextDelta = vi.fn()
+      const result = await provider.chat({ system: 'sys', messages: [], tools: [], onTextDelta })
+
+      expect(on).toHaveBeenCalledWith('text', expect.any(Function))
+      const textHandler = on.mock.calls[0][1]
+      textHandler('Hello')
+      textHandler(' there.')
+      expect(onTextDelta.mock.calls).toEqual([['Hello'], [' there.']])
+      expect(result).toEqual({ text: 'Hello there.', toolCalls: [], stopReason: 'end' })
+    })
+
+    it('uses the non-streaming call when onTextDelta is not given', async () => {
+      create.mockResolvedValue({ content: [], stop_reason: 'end_turn' })
+      const provider = new AnthropicProvider({ apiKey: 'k' })
+      await provider.chat({ system: 'sys', messages: [], tools: [] })
+      expect(create).toHaveBeenCalled()
+      expect(stream).not.toHaveBeenCalled()
+    })
   })
 })
