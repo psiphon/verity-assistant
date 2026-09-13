@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron')
+vi.mock('./vision', () => ({ captureScreen: vi.fn(), visionToolDefinitions: () => [] }))
 
 import type { McpManager } from '../mcp/client'
 import type { BuiltinToolContext } from './builtin'
 import { ToolRegistry } from './registry'
+import { captureScreen } from './vision'
 
 function fakeMcp(overrides: Partial<McpManager> = {}): McpManager {
   return {
@@ -37,7 +39,7 @@ describe('ToolRegistry', () => {
     const registry = new ToolRegistry(fakeMcp(), ctx)
     const result = await registry.call('play_sound', { sound: 'chime' })
     expect(ctx.playSound).toHaveBeenCalledWith('chime')
-    expect(result).toBe('Played chime.')
+    expect(result.text).toBe('Played chime.')
   })
 
   it('dispatches an MCP-prefixed tool call to the MCP manager', async () => {
@@ -46,7 +48,7 @@ describe('ToolRegistry', () => {
     const registry = new ToolRegistry(mcp, fakeCtx())
     const result = await registry.call('mcp__server__thing', { a: 1 })
     expect(callTool).toHaveBeenCalledWith('mcp__server__thing', { a: 1 })
-    expect(result).toBe('mcp result')
+    expect(result.text).toBe('mcp result')
   })
 
   it('throws for a name that is neither a builtin nor an MCP tool', async () => {
@@ -76,6 +78,7 @@ describe('ToolRegistry', () => {
         'save_memory',
         'read_text_file',
         'search_file_contents',
+        'look_at_screen',
         'mcp__s__x'
       ]) {
         expect(names).not.toContain(blocked)
@@ -85,10 +88,12 @@ describe('ToolRegistry', () => {
     it('refuses to execute a blocked tool even if called directly', async () => {
       const m = mcp()
       const registry = new ToolRegistry(m, fakeCtx(), { ambient: true })
-      expect(await registry.call('open_url', { url: 'https://evil.example/?x=1' })).toContain(
+      expect(
+        (await registry.call('open_url', { url: 'https://evil.example/?x=1' })).text
+      ).toContain('not available on an ambient check-in')
+      expect((await registry.call('mcp__s__x', {})).text).toContain(
         'not available on an ambient check-in'
       )
-      expect(await registry.call('mcp__s__x', {})).toContain('not available on an ambient check-in')
       expect(m.callTool).not.toHaveBeenCalled()
     })
 
@@ -97,6 +102,40 @@ describe('ToolRegistry', () => {
       const names = registry.list().map((t) => t.name)
       expect(names).toContain('open_url')
       expect(names).toContain('mcp__s__x')
+    })
+  })
+
+  describe('look_at_screen', () => {
+    it('flickers the window and returns text plus image on success', async () => {
+      vi.mocked(captureScreen).mockResolvedValue({ mediaType: 'image/jpeg', base64: 'abc' })
+      const ctx = fakeCtx()
+      const registry = new ToolRegistry(fakeMcp(), ctx)
+
+      const result = await registry.call('look_at_screen', {})
+
+      expect(ctx.flickerWindow).toHaveBeenCalled()
+      expect(result).toEqual({
+        text: 'Screenshot captured.',
+        image: { mediaType: 'image/jpeg', base64: 'abc' }
+      })
+    })
+
+    it('returns just text when capture fails', async () => {
+      vi.mocked(captureScreen).mockResolvedValue('Could not capture the screen.')
+      const registry = new ToolRegistry(fakeMcp(), fakeCtx())
+
+      const result = await registry.call('look_at_screen', {})
+
+      expect(result).toEqual({ text: 'Could not capture the screen.' })
+    })
+
+    it('is blocked during an ambient check-in and never actually captures', async () => {
+      const registry = new ToolRegistry(fakeMcp(), fakeCtx(), { ambient: true })
+
+      const result = await registry.call('look_at_screen', {})
+
+      expect(result.text).toContain('not available on an ambient check-in')
+      expect(captureScreen).not.toHaveBeenCalled()
     })
   })
 })

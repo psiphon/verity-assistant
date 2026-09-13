@@ -80,6 +80,29 @@ describe('AnthropicProvider', () => {
     ])
   })
 
+  it('sends a tool-result image as a base64 image block alongside the text', async () => {
+    create.mockResolvedValue({ content: [], stop_reason: 'end_turn' })
+    const provider = new AnthropicProvider({ apiKey: 'k' })
+    await provider.chat({
+      system: 'sys',
+      messages: [
+        {
+          role: 'tool',
+          toolCallId: 't1',
+          name: 'look_at_screen',
+          content: 'Screenshot captured.',
+          image: { mediaType: 'image/jpeg', base64: 'abc' }
+        }
+      ],
+      tools: []
+    })
+    const request = create.mock.calls[0][0]
+    expect(request.messages[0].content[0].content).toEqual([
+      { type: 'text', text: 'Screenshot captured.' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'abc' } }
+    ])
+  })
+
   it('omits the text block for an assistant turn with empty content', async () => {
     create.mockResolvedValue({ content: [], stop_reason: 'end_turn' })
     const provider = new AnthropicProvider({ apiKey: 'k' })

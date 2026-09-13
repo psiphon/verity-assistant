@@ -8,6 +8,7 @@ import type { MemoryKind } from '@shared/types'
 import { filesystemToolDefinitions, callFilesystemTool } from './filesystem'
 import { desktopToolDefinitions, callDesktopTool } from './desktop'
 import type { DesktopToolContext } from './desktop'
+import { visionToolDefinitions } from './vision'
 import { markUntrusted } from './untrusted'
 
 export const SFX_NAMES = ['chime', 'glitch', 'hum', 'stinger'] as const
@@ -183,7 +184,8 @@ export function builtinToolDefinitions(): ToolDefinition[] {
       }
     },
     ...filesystemToolDefinitions(),
-    ...desktopToolDefinitions()
+    ...desktopToolDefinitions(),
+    ...visionToolDefinitions()
   ]
 }
 

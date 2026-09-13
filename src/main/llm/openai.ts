@@ -37,6 +37,20 @@ export class OpenAIProvider implements LLMProvider {
         })
       } else if (msg.role === 'tool') {
         messages.push({ role: 'tool', tool_call_id: msg.toolCallId, content: msg.content })
+        // OpenAI's tool-message content type is text-only (no image parts) -
+        // a synthetic follow-up user message is the standard workaround for
+        // handing a tool-produced image to a vision-capable model.
+        if (msg.image) {
+          messages.push({
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: { url: `data:${msg.image.mediaType};base64,${msg.image.base64}` }
+              }
+            ]
+          })
+        }
       }
     }
 

@@ -27,9 +27,22 @@ export class AnthropicProvider implements LLMProvider {
         }
         messages.push({ role: 'assistant', content: blocks })
       } else if (msg.role === 'tool') {
+        const content: Anthropic.ToolResultBlockParam['content'] = msg.image
+          ? [
+              ...(msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
+              {
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: msg.image.mediaType as Anthropic.Base64ImageSource['media_type'],
+                  data: msg.image.base64
+                }
+              }
+            ]
+          : msg.content
         messages.push({
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: msg.toolCallId, content: msg.content }]
+          content: [{ type: 'tool_result', tool_use_id: msg.toolCallId, content }]
         })
       }
     }

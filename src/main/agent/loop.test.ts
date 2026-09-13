@@ -25,7 +25,12 @@ function fakeRegistry(
 ): ToolRegistry {
   return {
     list: vi.fn(() => toolNames.map((name) => ({ name, description: '', inputSchema: {} }))),
-    call
+    // `call` is kept as the simple string-returning shape every test in this
+    // file already uses (and asserts on directly) - wrapped here into the
+    // real {text, image?} shape ToolRegistry.call() actually resolves to.
+    call: vi.fn(async (name: string, input: Record<string, unknown>) => ({
+      text: await call(name, input)
+    }))
   } as unknown as ToolRegistry
 }
 

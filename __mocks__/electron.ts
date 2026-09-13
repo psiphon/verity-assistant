@@ -25,11 +25,16 @@ export class BrowserWindow {
   private opacity = 1
   private bounds = { x: 0, y: 0, width: 320, height: 420 }
   private alwaysOnTop = false
+  private title = 'Verity'
 
   constructor() {
     BrowserWindow.instances.push(this)
   }
 
+  getTitle = vi.fn(() => this.title)
+  setTitle = vi.fn((t: string) => {
+    this.title = t
+  })
   show = vi.fn()
   hide = vi.fn()
   focus = vi.fn()
@@ -90,6 +95,10 @@ export const powerMonitor = {
 export const globalShortcut = {
   register: vi.fn(() => true),
   unregisterAll: vi.fn()
+}
+
+export const desktopCapturer = {
+  getSources: vi.fn(async () => [])
 }
 
 // Default: encryption unavailable, so encrypt/decrypt are identity and tests

@@ -33,7 +33,13 @@ export class OllamaProvider implements LLMProvider {
           }))
         })
       } else if (msg.role === 'tool') {
-        messages.push({ role: 'tool', content: msg.content })
+        // Tool-result images aren't reliably supported here across models -
+        // drop it with a text note rather than silently losing the tool
+        // call's outcome entirely.
+        const content = msg.image
+          ? `${msg.content} (screenshot captured - not supported by this provider)`
+          : msg.content
+        messages.push({ role: 'tool', content })
       }
     }
 

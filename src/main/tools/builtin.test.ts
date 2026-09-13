@@ -33,6 +33,7 @@ describe('builtinToolDefinitions', () => {
     expect(names).toContain('get_current_time')
     expect(names).toContain('list_directory')
     expect(names).toContain('get_battery_status')
+    expect(names).toContain('look_at_screen')
     expect(new Set(names).size).toBe(names.length)
   })
 

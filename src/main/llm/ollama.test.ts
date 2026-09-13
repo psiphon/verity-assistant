@@ -110,6 +110,27 @@ describe('OllamaProvider', () => {
     ])
   })
 
+  it('drops a tool-result image, appending a text note instead', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: { content: 'ok' } })))
+    const provider = new OllamaProvider({})
+    const history: ChatMessage[] = [
+      {
+        role: 'tool',
+        toolCallId: 't1',
+        name: 'look_at_screen',
+        content: 'Screenshot captured.',
+        image: { mediaType: 'image/jpeg', base64: 'abc' }
+      }
+    ]
+    await provider.chat({ system: 'sys', messages: history, tools: [] })
+
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
+    expect(body.messages).toContainEqual({
+      role: 'tool',
+      content: 'Screenshot captured. (screenshot captured - not supported by this provider)'
+    })
+  })
+
   it('throws with the status and body text when the request fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'boom' }, false, 404)))
     const provider = new OllamaProvider({})

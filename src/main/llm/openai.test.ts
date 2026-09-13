@@ -126,6 +126,33 @@ describe('OpenAIProvider', () => {
     ])
   })
 
+  it('follows a tool-result image with a synthetic user message, since tool content is text-only', async () => {
+    create.mockResolvedValue(response({ content: 'ok' }))
+    const provider = new OpenAIProvider({ apiKey: 'k' })
+    await provider.chat({
+      system: 'sys',
+      messages: [
+        {
+          role: 'tool',
+          toolCallId: 't1',
+          name: 'look_at_screen',
+          content: 'Screenshot captured.',
+          image: { mediaType: 'image/jpeg', base64: 'abc' }
+        }
+      ],
+      tools: []
+    })
+    const request = create.mock.calls[0][0]
+    expect(request.messages).toEqual([
+      { role: 'system', content: 'sys' },
+      { role: 'tool', tool_call_id: 't1', content: 'Screenshot captured.' },
+      {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,abc' } }]
+      }
+    ])
+  })
+
   it('maps ToolDefinitions into OpenAI function-tool schema', async () => {
     create.mockResolvedValue(response({ content: 'ok' }))
     const provider = new OpenAIProvider({ apiKey: 'k' })

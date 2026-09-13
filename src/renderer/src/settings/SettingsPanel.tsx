@@ -641,7 +641,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           browser&apos;s built-in speech-recognition service to transcribe it - only while
           you&apos;re actively using it, never in the background. If update checks are on, Verity
           contacts GitHub&apos;s public release API on launch (and whenever you click &quot;Check
-          Now&quot;) - no personal data is sent, just a check for a newer version number.
+          Now&quot;) - no personal data is sent, just a check for a newer version number. The
+          look_at_screen tool takes an actual screenshot of your focused window (or the whole
+          screen) and sends it to your configured LLM provider - it only runs when you explicitly
+          ask Verity to look at your screen, never on its own or during an ambient check-in, and the
+          window flickers so it&apos;s never a silent capture.
         </p>
       </section>
 

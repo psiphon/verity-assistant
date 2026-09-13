@@ -13,7 +13,18 @@ export interface ToolCallRequest {
 export type ChatMessage =
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string; toolCalls?: ToolCallRequest[] }
-  | { role: 'tool'; toolCallId: string; name: string; content: string }
+  | {
+      role: 'tool'
+      toolCallId: string
+      name: string
+      content: string
+      /** Present only for a tool result that captured an image (currently
+       * just look_at_screen) - how each provider serializes this varies:
+       * Anthropic/OpenAI support it natively (OpenAI as a separate
+       * synthetic user message, since its tool-message content type is
+       * text-only), Ollama drops it with a text note instead. */
+      image?: { mediaType: string; base64: string }
+    }
 
 export interface ChatRequest {
   system: string
