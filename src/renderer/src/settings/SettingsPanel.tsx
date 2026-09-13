@@ -6,7 +6,8 @@ import type {
   MemoryEntry,
   ProviderId,
   RapportEvent,
-  RapportState
+  RapportState,
+  ActivityEntry
 } from '@shared/types'
 import { listVoices } from '../tts/speak'
 import { FACE_PACKS } from '../face/faceAtlas'
@@ -29,6 +30,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [rapportHistory, setRapportHistory] = useState<RapportEvent[]>([])
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [conversationCleared, setConversationCleared] = useState(false)
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
 
   useEffect(() => {
     window.verity.settings.get().then(setSettings)
@@ -36,6 +38,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     window.verity.rapport.get().then(setRapport)
     window.verity.rapport.getHistory().then(setRapportHistory)
     window.verity.memories.get().then(setMemories)
+    window.verity.activity.get().then(setActivity)
     const load = (): void => setVoices(listVoices())
     load()
     window.speechSynthesis?.addEventListener('voiceschanged', load)
@@ -63,6 +66,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     if (!window.confirm(`Delete all ${memories.length} saved memories? This can't be undone.`))
       return
     setMemories(await window.verity.memories.clear())
+  }
+
+  async function handleClearActivity(): Promise<void> {
+    setActivity(await window.verity.activity.clear())
   }
 
   if (!settings) return <div className="settings-panel">Loading...</div>
@@ -300,6 +307,29 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             ? "Cleared - Verity won't remember the conversation on the next message."
             : 'The conversation (and what Verity has been discussing) persists across restarts, separately from saved memories and rapport.'}
         </p>
+      </section>
+
+      <section>
+        <div className="settings-row-header">
+          <label>Activity ({activity.length})</label>
+          {activity.length > 0 && <button onClick={handleClearActivity}>Clear Activity</button>}
+        </div>
+        <p className="hint">
+          Every tool call Verity has actually made - builtin and MCP alike - so you can see what she
+          did, not just what she said.
+        </p>
+        {activity.length > 0 && (
+          <div className="memory-list">
+            {[...activity]
+              .reverse()
+              .slice(0, 20)
+              .map((a) => (
+                <div key={a.id} className="memory-row">
+                  <span className="memory-content">{a.summary}</span>
+                </div>
+              ))}
+          </div>
+        )}
       </section>
 
       <section>

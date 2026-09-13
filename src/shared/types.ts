@@ -109,6 +109,16 @@ export interface RapportEvent {
   createdAt: string
 }
 
+/** One recorded tool call (see src/main/activity.ts) - a readable "what did
+ * she actually do" trail distinct from the raw JSONL debug log, covering
+ * every builtin and MCP tool call alike. */
+export interface ActivityEntry {
+  id: string
+  tool: string
+  summary: string
+  createdAt: string
+}
+
 /** A single line of the persisted, display-oriented conversation log (see
  * src/main/conversation.ts) - distinct from the LLM's own working history,
  * which also carries tool-call/tool-result payloads this doesn't need. */

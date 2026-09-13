@@ -58,6 +58,7 @@ import { STUCK_FALLBACK_TEXT } from './agent/loop'
 import { getRapport, resetRapport } from './rapport'
 import { clearMemories, getMemories, saveMemory } from './memory'
 import { clearConversation, getTranscript } from './conversation'
+import { clearActivity, getActivity } from './activity'
 import { settingsStore } from './store'
 import { registerIpcHandlers, startAmbientTimer } from './ipc'
 
@@ -131,6 +132,7 @@ beforeEach(() => {
   resetRapport()
   clearMemories()
   clearConversation()
+  clearActivity()
   BrowserWindowMock.instances.length = 0
   new BrowserWindow()
   createProvider.mockClear()
@@ -166,6 +168,8 @@ describe('registerIpcHandlers', () => {
       IPC.memoriesClear,
       IPC.conversationGet,
       IPC.conversationClear,
+      IPC.activityGet,
+      IPC.activityClear,
       IPC.logsGetPath,
       IPC.logsOpenFolder
     ]) {
@@ -275,6 +279,19 @@ describe('chat:send', () => {
       name: 'play_sound',
       input: { sound: 'chime' }
     })
+  })
+
+  it('logs every tool call to the activity log', async () => {
+    runAgentTurn.mockImplementationOnce(async (_p, _r, _h, _u, _s, events) => {
+      events.onToolCall('get_current_time', {})
+      return { text: 'done', history: [] }
+    })
+    const handler = getHandleHandler(IPC.chatSend)
+    await handler(fakeEvent(), 'hi')
+
+    expect(getActivity()).toMatchObject([
+      { tool: 'get_current_time', summary: 'get_current_time()' }
+    ])
   })
 })
 

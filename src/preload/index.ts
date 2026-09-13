@@ -7,6 +7,7 @@ import type {
   RapportEvent,
   MemoryEntry,
   TranscriptEntry,
+  ActivityEntry,
   TtsAudio
 } from '@shared/types'
 
@@ -67,6 +68,10 @@ const api = {
       ipcRenderer.on(IPC.conversationCleared, listener)
       return () => ipcRenderer.removeListener(IPC.conversationCleared, listener)
     }
+  },
+  activity: {
+    get: (): Promise<ActivityEntry[]> => ipcRenderer.invoke(IPC.activityGet),
+    clear: (): Promise<ActivityEntry[]> => ipcRenderer.invoke(IPC.activityClear)
   },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),

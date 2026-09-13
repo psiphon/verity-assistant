@@ -157,6 +157,36 @@ describe('SettingsPanel', () => {
     })
   })
 
+  describe('activity', () => {
+    it('shows no Clear button when there is no activity yet', async () => {
+      setup({ activity: [] })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Activity (0)')
+      expect(screen.queryByRole('button', { name: 'Clear Activity' })).not.toBeInTheDocument()
+    })
+
+    it('lists recent activity newest-first and clears it', async () => {
+      const fake = setup({
+        activity: [
+          { id: '1', tool: 'get_current_time', summary: 'get_current_time()', createdAt: '' },
+          { id: '2', tool: 'play_sound', summary: 'play_sound(sound: chime)', createdAt: '' }
+        ]
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Activity (2)')
+
+      const rows = screen.getAllByText(/get_current_time\(\)|play_sound/)
+      expect(rows.map((r) => r.textContent)).toEqual([
+        'play_sound(sound: chime)',
+        'get_current_time()'
+      ])
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear Activity' }))
+      expect(fake.api.activity.clear).toHaveBeenCalled()
+      await screen.findByText('Activity (0)')
+    })
+  })
+
   describe('conversation', () => {
     it('does nothing when the clear confirmation is declined', async () => {
       const fake = setup()

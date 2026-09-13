@@ -15,6 +15,8 @@ export const IPC = {
   conversationGet: 'conversation:get',
   conversationClear: 'conversation:clear',
   conversationCleared: 'conversation:cleared',
+  activityGet: 'activity:get',
+  activityClear: 'activity:clear',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   ttsSynthesize: 'tts:synthesize',

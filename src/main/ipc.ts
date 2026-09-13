@@ -12,6 +12,7 @@ import { synthesizeFishAudio } from './tts'
 import { log, getLogPath } from './logger'
 import { WINDOW_SIZE } from './windowConfig'
 import { getRapport, getTier, resetRapport, onRapportChanged, getRapportHistory } from './rapport'
+import { logActivity, getActivity, clearActivity } from './activity'
 import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } from './memory'
 import {
   trimHistory,
@@ -235,6 +236,7 @@ export function registerIpcHandlers(): void {
             } else {
               log.info('tool', `Calling ${name}`, { args: Object.keys(input) })
             }
+            logActivity(name, input)
             win?.webContents.send(IPC.chatToolCall, { name, input })
           }
         }
@@ -333,6 +335,14 @@ export function registerIpcHandlers(): void {
     history = []
     lastDeliveredText = ''
     BrowserWindow.fromWebContents(event.sender)?.webContents.send(IPC.conversationCleared)
+  })
+
+  ipcMain.handle(IPC.activityGet, () => getActivity())
+
+  ipcMain.handle(IPC.activityClear, () => {
+    log.info('activity', 'Manual clear requested from Settings')
+    clearActivity()
+    return getActivity()
   })
 
   ipcMain.handle(IPC.logsGetPath, () => getLogPath())
@@ -466,6 +476,7 @@ async function doAmbientCheck(): Promise<void> {
       {
         onToolCall: (name, input) => {
           log.info('tool', `Ambient call: ${name}`, { args: Object.keys(input) })
+          logActivity(name, input)
           win.webContents.send(IPC.chatToolCall, { name, input })
         }
       },

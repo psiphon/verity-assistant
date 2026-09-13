@@ -4,7 +4,8 @@ import type {
   RapportState,
   RapportEvent,
   MemoryEntry,
-  TranscriptEntry
+  TranscriptEntry,
+  ActivityEntry
 } from '@shared/types'
 
 /**
@@ -53,6 +54,14 @@ export function installDevMockVerityIfNeeded(): void {
     }
   ]
   let transcript: TranscriptEntry[] = []
+  let activity: ActivityEntry[] = [
+    {
+      id: '1',
+      tool: 'get_current_time',
+      summary: 'get_current_time()',
+      createdAt: new Date().toISOString()
+    }
+  ]
 
   const rapportListeners = new Set<(r: RapportState) => void>()
   const messageListeners = new Set<(t: string) => void>()
@@ -141,6 +150,13 @@ export function installDevMockVerityIfNeeded(): void {
       onCleared: (cb) => {
         conversationClearedListeners.add(cb)
         return () => conversationClearedListeners.delete(cb)
+      }
+    },
+    activity: {
+      get: async () => activity,
+      clear: async () => {
+        activity = []
+        return activity
       }
     },
     settings: {

@@ -5,7 +5,8 @@ import type {
   McpServerStatus,
   RapportState,
   RapportEvent,
-  TranscriptEntry
+  TranscriptEntry,
+  ActivityEntry
 } from '@shared/types'
 
 export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -56,6 +57,7 @@ export interface FakeVerityState {
   rapportHistory: RapportEvent[]
   memories: MemoryEntry[]
   transcript: TranscriptEntry[]
+  activity: ActivityEntry[]
 }
 
 export interface FakeVerity {
@@ -94,7 +96,8 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
     rapport: overrides.rapport ?? { value: 100, tierLabel: 'Human Facade' },
     rapportHistory: overrides.rapportHistory ?? [],
     memories: overrides.memories ?? [],
-    transcript: overrides.transcript ?? []
+    transcript: overrides.transcript ?? [],
+    activity: overrides.activity ?? []
   }
 
   const api: Window['verity'] = {
@@ -132,6 +135,13 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
         state.transcript = []
       }),
       onCleared: conversationCleared.add
+    },
+    activity: {
+      get: vi.fn(async () => state.activity),
+      clear: vi.fn(async () => {
+        state.activity = []
+        return state.activity
+      })
     },
     settings: {
       get: vi.fn(async () => state.settings),
