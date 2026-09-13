@@ -6,7 +6,8 @@ import type {
   RapportState,
   RapportEvent,
   TranscriptEntry,
-  ActivityEntry
+  ActivityEntry,
+  Reminder
 } from '@shared/types'
 
 export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -58,6 +59,7 @@ export interface FakeVerityState {
   memories: MemoryEntry[]
   transcript: TranscriptEntry[]
   activity: ActivityEntry[]
+  reminders: Reminder[]
 }
 
 export interface FakeVerity {
@@ -97,7 +99,8 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
     rapportHistory: overrides.rapportHistory ?? [],
     memories: overrides.memories ?? [],
     transcript: overrides.transcript ?? [],
-    activity: overrides.activity ?? []
+    activity: overrides.activity ?? [],
+    reminders: overrides.reminders ?? []
   }
 
   const api: Window['verity'] = {
@@ -141,6 +144,13 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       clear: vi.fn(async () => {
         state.activity = []
         return state.activity
+      })
+    },
+    reminders: {
+      get: vi.fn(async () => state.reminders),
+      cancel: vi.fn(async (id: string) => {
+        state.reminders = state.reminders.filter((r) => r.id !== id)
+        return state.reminders
       })
     },
     settings: {

@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers, initAgentBackend, startAmbientTimer } from './ipc'
 import { settingsStore } from './store'
 import { initLogger, log } from './logger'
+import { initReminders } from './reminders'
 import { IPC } from '@shared/ipc'
 import { WINDOW_SIZE } from './windowConfig'
 
@@ -143,6 +144,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   await initAgentBackend()
   startAmbientTimer()
+  initReminders()
 
   const win = createWindow()
   createTray(win)

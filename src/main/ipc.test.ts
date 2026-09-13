@@ -59,6 +59,7 @@ import { getRapport, resetRapport } from './rapport'
 import { clearMemories, getMemories, saveMemory } from './memory'
 import { clearConversation, getTranscript } from './conversation'
 import { clearActivity, getActivity } from './activity'
+import { scheduleReminder } from './reminders'
 import { settingsStore } from './store'
 import { registerIpcHandlers, startAmbientTimer } from './ipc'
 
@@ -170,6 +171,8 @@ describe('registerIpcHandlers', () => {
       IPC.conversationClear,
       IPC.activityGet,
       IPC.activityClear,
+      IPC.remindersGet,
+      IPC.remindersCancel,
       IPC.logsGetPath,
       IPC.logsOpenFolder
     ]) {
@@ -512,6 +515,21 @@ describe('memory handlers', () => {
     const afterClear = getHandleHandler(IPC.memoriesClear)()
     expect(afterClear).toEqual([])
     expect(getMemories()).toEqual([])
+  })
+})
+
+describe('reminders handlers', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('gets and cancels a scheduled reminder', () => {
+    vi.useFakeTimers()
+    scheduleReminder(5, 'stretch')
+
+    const pending = getHandleHandler(IPC.remindersGet)()
+    expect(pending).toMatchObject([{ message: 'stretch' }])
+
+    const afterCancel = getHandleHandler(IPC.remindersCancel)(fakeEvent(), pending[0].id)
+    expect(afterCancel).toEqual([])
   })
 })
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron')
+vi.mock('electron-store')
 
 // child_process.execFile is turned into a promise via util.promisify, which
 // (for execFile specifically) resolves through a well-known custom symbol
@@ -17,6 +18,7 @@ vi.mock('node:child_process', () => {
 
 import { Notification } from 'electron'
 import { callDesktopTool, desktopToolDefinitions, type DesktopToolContext } from './desktop'
+import { cancelReminder, getReminders } from '../reminders'
 
 // The real electron.d.ts (used for type-checking) has no static `instances`
 // - that only exists on the test double in __mocks__/electron.ts - so this
@@ -55,6 +57,7 @@ describe('desktopToolDefinitions', () => {
       'flash_window',
       'flicker_window',
       'set_reminder',
+      'list_reminders',
       'get_weather'
     ])
   })
@@ -196,7 +199,10 @@ describe('flash_window / flicker_window', () => {
 
 describe('set_reminder', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    for (const r of getReminders()) cancelReminder(r.id)
+    vi.useRealTimers()
+  })
 
   it('confirms the reminder immediately and fires a notification later', async () => {
     vi.mocked(Notification.isSupported).mockReturnValue(true)
@@ -223,6 +229,14 @@ describe('set_reminder', () => {
   it('falls back to a generic message when none is given', async () => {
     const result = await callDesktopTool('set_reminder', { minutes: 1, message: '  ' }, fakeCtx())
     expect(result).toContain('"Reminder!"')
+  })
+
+  it('a reminder no longer shows up in list_reminders once it has fired', async () => {
+    await callDesktopTool('set_reminder', { minutes: 5, message: 'stretch' }, fakeCtx())
+    expect(await callDesktopTool('list_reminders', {}, fakeCtx())).toContain('stretch')
+
+    vi.advanceTimersByTime(5 * 60_000)
+    expect(await callDesktopTool('list_reminders', {}, fakeCtx())).toBe('(no pending reminders)')
   })
 })
 

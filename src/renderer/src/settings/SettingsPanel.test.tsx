@@ -187,6 +187,30 @@ describe('SettingsPanel', () => {
     })
   })
 
+  describe('reminders', () => {
+    it('shows a none-pending hint when there are no reminders', async () => {
+      setup({ reminders: [] })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Reminders (0)')
+      expect(screen.getByText(/None pending/)).toBeInTheDocument()
+    })
+
+    it('lists pending reminders and cancels one', async () => {
+      const fake = setup({
+        reminders: [
+          { id: '1', message: 'stretch', fireAt: new Date().toISOString(), createdAt: '' }
+        ]
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Reminders (1)')
+      expect(screen.getByText(/stretch/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel reminder' }))
+      expect(fake.api.reminders.cancel).toHaveBeenCalledWith('1')
+      await screen.findByText('Reminders (0)')
+    })
+  })
+
   describe('conversation', () => {
     it('does nothing when the clear confirmation is declined', async () => {
       const fake = setup()

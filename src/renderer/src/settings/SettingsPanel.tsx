@@ -7,7 +7,8 @@ import type {
   ProviderId,
   RapportEvent,
   RapportState,
-  ActivityEntry
+  ActivityEntry,
+  Reminder
 } from '@shared/types'
 import { listVoices } from '../tts/speak'
 import { FACE_PACKS } from '../face/faceAtlas'
@@ -31,6 +32,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [conversationCleared, setConversationCleared] = useState(false)
   const [activity, setActivity] = useState<ActivityEntry[]>([])
+  const [reminders, setReminders] = useState<Reminder[]>([])
 
   useEffect(() => {
     window.verity.settings.get().then(setSettings)
@@ -39,6 +41,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     window.verity.rapport.getHistory().then(setRapportHistory)
     window.verity.memories.get().then(setMemories)
     window.verity.activity.get().then(setActivity)
+    window.verity.reminders.get().then(setReminders)
     const load = (): void => setVoices(listVoices())
     load()
     window.speechSynthesis?.addEventListener('voiceschanged', load)
@@ -70,6 +73,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
   async function handleClearActivity(): Promise<void> {
     setActivity(await window.verity.activity.clear())
+  }
+
+  async function handleCancelReminder(id: string): Promise<void> {
+    setReminders(await window.verity.reminders.cancel(id))
   }
 
   if (!settings) return <div className="settings-panel">Loading...</div>
@@ -328,6 +335,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
                   <span className="memory-content">{a.summary}</span>
                 </div>
               ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <label>Reminders ({reminders.length})</label>
+        {reminders.length === 0 ? (
+          <p className="hint">None pending - set via the set_reminder tool in chat.</p>
+        ) : (
+          <div className="memory-list">
+            {reminders.map((r) => (
+              <div key={r.id} className="memory-row">
+                <span className="memory-content">
+                  {r.message} - {new Date(r.fireAt).toLocaleString()}
+                </span>
+                <button onClick={() => handleCancelReminder(r.id)} aria-label="Cancel reminder">
+                  🗑
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </section>

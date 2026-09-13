@@ -109,6 +109,16 @@ export interface RapportEvent {
   createdAt: string
 }
 
+/** A pending reminder (see src/main/reminders.ts) - persisted so it survives
+ * a restart instead of being a bare in-memory setTimeout. */
+export interface Reminder {
+  id: string
+  message: string
+  /** ISO timestamp of when it should fire. */
+  fireAt: string
+  createdAt: string
+}
+
 /** One recorded tool call (see src/main/activity.ts) - a readable "what did
  * she actually do" trail distinct from the raw JSONL debug log, covering
  * every builtin and MCP tool call alike. */

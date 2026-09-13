@@ -13,6 +13,7 @@ import { log, getLogPath } from './logger'
 import { WINDOW_SIZE } from './windowConfig'
 import { getRapport, getTier, resetRapport, onRapportChanged, getRapportHistory } from './rapport'
 import { logActivity, getActivity, clearActivity } from './activity'
+import { getReminders, cancelReminder } from './reminders'
 import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } from './memory'
 import {
   trimHistory,
@@ -343,6 +344,13 @@ export function registerIpcHandlers(): void {
     log.info('activity', 'Manual clear requested from Settings')
     clearActivity()
     return getActivity()
+  })
+
+  ipcMain.handle(IPC.remindersGet, () => getReminders())
+
+  ipcMain.handle(IPC.remindersCancel, (_e, id: string) => {
+    log.info('reminders', `Manual cancel requested from Settings: ${id}`)
+    return cancelReminder(id)
   })
 
   ipcMain.handle(IPC.logsGetPath, () => getLogPath())

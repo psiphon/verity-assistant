@@ -5,7 +5,8 @@ import type {
   RapportEvent,
   MemoryEntry,
   TranscriptEntry,
-  ActivityEntry
+  ActivityEntry,
+  Reminder
 } from '@shared/types'
 
 /**
@@ -54,6 +55,7 @@ export function installDevMockVerityIfNeeded(): void {
     }
   ]
   let transcript: TranscriptEntry[] = []
+  let reminders: Reminder[] = []
   let activity: ActivityEntry[] = [
     {
       id: '1',
@@ -157,6 +159,13 @@ export function installDevMockVerityIfNeeded(): void {
       clear: async () => {
         activity = []
         return activity
+      }
+    },
+    reminders: {
+      get: async () => reminders,
+      cancel: async (id: string) => {
+        reminders = reminders.filter((r) => r.id !== id)
+        return reminders
       }
     },
     settings: {

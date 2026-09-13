@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { Notification } from 'electron'
 import type { ToolDefinition } from '../llm/types'
 import { log } from '../logger'
+import { scheduleReminder, getReminders } from '../reminders'
 
 const execFileAsync = promisify(execFile)
 const PS_TIMEOUT_MS = 5000
@@ -99,7 +99,7 @@ export function desktopToolDefinitions(): ToolDefinition[] {
     {
       name: 'set_reminder',
       description:
-        'Schedule a native notification to pop up after a delay. Only fires if Verity is still running - not a real persistent alarm.',
+        'Schedule a native notification to pop up after a delay. Persists across restarts (if Verity is closed when it comes due, it fires as soon as it reopens, as long as that is within about an hour of the original time).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -108,6 +108,11 @@ export function desktopToolDefinitions(): ToolDefinition[] {
         },
         required: ['minutes', 'message']
       }
+    },
+    {
+      name: 'list_reminders',
+      description: "List the user's pending reminders (soonest first).",
+      inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'get_weather',
@@ -233,13 +238,12 @@ $p = [System.Windows.Forms.Cursor]::Position
   }
 }
 
-function setReminder(minutesInput: unknown, messageInput: unknown): string {
-  const minutes = Math.max(0.1, Math.min(180, Number(minutesInput) || 1))
-  const message = String(messageInput ?? '').trim() || 'Reminder!'
-  setTimeout(() => {
-    if (Notification.isSupported()) new Notification({ title: 'Verity', body: message }).show()
-  }, minutes * 60_000)
-  return `Okay, I'll remind you in ${minutes} minute(s): "${message}"`
+function listReminders(): string {
+  const reminders = getReminders()
+  if (reminders.length === 0) return '(no pending reminders)'
+  return reminders
+    .map((r) => `- "${r.message}" at ${new Date(r.fireAt).toLocaleString()}`)
+    .join('\n')
 }
 
 interface GeoResult {
@@ -331,7 +335,9 @@ export async function callDesktopTool(
       ctx.flickerWindow()
       return 'Flickered the window.'
     case 'set_reminder':
-      return setReminder(input.minutes, input.message)
+      return scheduleReminder(input.minutes, input.message)
+    case 'list_reminders':
+      return listReminders()
     case 'get_weather':
       return getWeather(input.location)
     default:

@@ -8,6 +8,7 @@ import type {
   MemoryEntry,
   TranscriptEntry,
   ActivityEntry,
+  Reminder,
   TtsAudio
 } from '@shared/types'
 
@@ -72,6 +73,10 @@ const api = {
   activity: {
     get: (): Promise<ActivityEntry[]> => ipcRenderer.invoke(IPC.activityGet),
     clear: (): Promise<ActivityEntry[]> => ipcRenderer.invoke(IPC.activityClear)
+  },
+  reminders: {
+    get: (): Promise<Reminder[]> => ipcRenderer.invoke(IPC.remindersGet),
+    cancel: (id: string): Promise<Reminder[]> => ipcRenderer.invoke(IPC.remindersCancel, id)
   },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),
