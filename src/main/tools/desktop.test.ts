@@ -16,6 +16,12 @@ vi.mock('node:child_process', () => {
   return { execFile, default: { execFile } }
 })
 
+const { readFileMock } = vi.hoisted(() => ({ readFileMock: vi.fn() }))
+vi.mock('node:fs/promises', () => ({
+  readFile: readFileMock,
+  default: { readFile: readFileMock }
+}))
+
 import { Notification } from 'electron'
 import { callDesktopTool, desktopToolDefinitions, type DesktopToolContext } from './desktop'
 import { cancelReminder, getReminders } from '../reminders'
@@ -63,19 +69,135 @@ describe('desktopToolDefinitions', () => {
   })
 })
 
-describe('on a non-Windows platform', () => {
+describe('cursor_nudge stays Windows-only', () => {
+  it.each(['darwin', 'linux'])(
+    'reports it is Windows-only on %s without shelling out',
+    async (p) => {
+      setPlatform(p)
+      const result = await callDesktopTool('cursor_nudge', { dx: 1, dy: 1 }, fakeCtx())
+      expect(result).toMatch(/only implemented on Windows/)
+      expect(execFileCustom).not.toHaveBeenCalled()
+    }
+  )
+})
+
+describe('on macOS', () => {
+  beforeEach(() => setPlatform('darwin'))
+
+  it('get_battery_status parses percentage and state from pmset', async () => {
+    execFileCustom.mockResolvedValue({
+      stdout: "Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t87%; discharging; 3:24\n"
+    })
+    const result = await callDesktopTool('get_battery_status', {}, fakeCtx())
+    expect(result).toBe('87% battery, discharging.')
+  })
+
+  it('get_battery_status reports no battery when pmset shows none', async () => {
+    execFileCustom.mockResolvedValue({ stdout: "Now drawing from 'AC Power'\n" })
+    const result = await callDesktopTool('get_battery_status', {}, fakeCtx())
+    expect(result).toBe('No battery detected - likely a desktop.')
+  })
+
+  it('get_active_window_title returns the frontmost app name', async () => {
+    execFileCustom.mockResolvedValue({ stdout: '4242|Safari\n' })
+    const result = await callDesktopTool('get_active_window_title', {}, fakeCtx())
+    expect(result).toBe('Safari')
+  })
+
+  it('get_active_window_title recognizes when Verity itself is focused', async () => {
+    execFileCustom.mockResolvedValue({ stdout: `${process.pid}|Verity\n` })
+    const result = await callDesktopTool('get_active_window_title', {}, fakeCtx())
+    expect(result).toBe("(you're currently focused on Verity itself)")
+  })
+
+  it('list_running_apps splits the comma-separated process list', async () => {
+    execFileCustom.mockResolvedValue({ stdout: 'Finder, Safari, Terminal\n' })
+    const result = await callDesktopTool('list_running_apps', {}, fakeCtx())
+    expect(result).toBe('Finder\nSafari\nTerminal')
+  })
+
+  describe('set_system_volume', () => {
+    it('nudges volume up by querying then setting output volume', async () => {
+      execFileCustom.mockResolvedValueOnce({ stdout: '50\n' }).mockResolvedValueOnce({ stdout: '' })
+      const result = await callDesktopTool(
+        'set_system_volume',
+        { action: 'up', steps: 3 },
+        fakeCtx()
+      )
+      expect(result).toBe('Nudged volume up (3x).')
+    })
+
+    it('toggles mute by flipping the current muted state', async () => {
+      execFileCustom
+        .mockResolvedValueOnce({ stdout: 'false\n' })
+        .mockResolvedValueOnce({ stdout: '' })
+      const result = await callDesktopTool('set_system_volume', { action: 'mute' }, fakeCtx())
+      expect(result).toBe('Toggled mute.')
+    })
+
+    it('reports failure if osascript errors', async () => {
+      execFileCustom.mockRejectedValue(new Error('boom'))
+      const result = await callDesktopTool('set_system_volume', { action: 'up' }, fakeCtx())
+      expect(result).toBe('Could not change the volume.')
+    })
+  })
+})
+
+describe('on Linux', () => {
   beforeEach(() => setPlatform('linux'))
 
-  it.each([
-    'get_battery_status',
-    'get_active_window_title',
-    'list_running_apps',
-    'set_system_volume',
-    'cursor_nudge'
-  ])('%s reports it is Windows-only without shelling out', async (name) => {
-    const result = await callDesktopTool(name, { action: 'up', dx: 1, dy: 1 }, fakeCtx())
-    expect(result).toMatch(/only implemented on Windows/)
-    expect(execFileCustom).not.toHaveBeenCalled()
+  it('get_battery_status reads capacity/status from sysfs', async () => {
+    readFileMock.mockImplementation(async (path: string) => {
+      if (path.endsWith('/capacity')) return '73\n'
+      if (path.endsWith('/status')) return 'Discharging\n'
+      throw new Error('unexpected path')
+    })
+    const result = await callDesktopTool('get_battery_status', {}, fakeCtx())
+    expect(result).toBe('73% battery, discharging.')
+  })
+
+  it('get_battery_status reports no battery when sysfs has neither BAT0 nor BAT1', async () => {
+    readFileMock.mockRejectedValue(new Error('ENOENT'))
+    const result = await callDesktopTool('get_battery_status', {}, fakeCtx())
+    expect(result).toBe('No battery detected - likely a desktop.')
+  })
+
+  it('get_active_window_title reports the title from xdotool', async () => {
+    execFileCustom.mockResolvedValue({ stdout: 'My Editor - file.txt\n' })
+    const result = await callDesktopTool('get_active_window_title', {}, fakeCtx())
+    expect(result).toBe('My Editor - file.txt')
+  })
+
+  it('get_active_window_title falls back gracefully when xdotool is missing', async () => {
+    execFileCustom.mockRejectedValue(new Error('ENOENT'))
+    const result = await callDesktopTool('get_active_window_title', {}, fakeCtx())
+    expect(result).toBe('Could not determine the active window.')
+  })
+
+  it('list_running_apps parses titles out of wmctrl -l output', async () => {
+    execFileCustom.mockResolvedValue({
+      stdout: '0x001 0 host1 Terminal\n0x002 0 host1 My Browser - Example\n'
+    })
+    const result = await callDesktopTool('list_running_apps', {}, fakeCtx())
+    expect(result).toBe('Terminal\nMy Browser - Example')
+  })
+
+  describe('set_system_volume', () => {
+    it('nudges volume up via amixer', async () => {
+      execFileCustom.mockResolvedValue({ stdout: '' })
+      const result = await callDesktopTool(
+        'set_system_volume',
+        { action: 'up', steps: 2 },
+        fakeCtx()
+      )
+      expect(result).toBe('Nudged volume up (2x).')
+    })
+
+    it('reports failure if amixer errors', async () => {
+      execFileCustom.mockRejectedValue(new Error('boom'))
+      const result = await callDesktopTool('set_system_volume', { action: 'up' }, fakeCtx())
+      expect(result).toBe('Could not change the volume.')
+    })
   })
 })
 

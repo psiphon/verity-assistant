@@ -1,18 +1,36 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { readFile } from 'node:fs/promises'
 import type { ToolDefinition } from '../llm/types'
 import { log } from '../logger'
 import { scheduleReminder, getReminders } from '../reminders'
 
 const execFileAsync = promisify(execFile)
-const PS_TIMEOUT_MS = 5000
+const SHELL_TIMEOUT_MS = 5000
 
 async function runPowerShell(script: string): Promise<string> {
   const { stdout } = await execFileAsync(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-Command', script],
-    { timeout: PS_TIMEOUT_MS }
+    { timeout: SHELL_TIMEOUT_MS }
   )
+  return stdout.trim()
+}
+
+async function runOsascript(script: string): Promise<string> {
+  const { stdout } = await execFileAsync('osascript', ['-e', script], {
+    timeout: SHELL_TIMEOUT_MS
+  })
+  return stdout.trim()
+}
+
+// Best-effort Linux equivalents (xdotool/amixer/wmctrl) - unlike Windows and
+// macOS, there's no single bundled tool that reliably works across distros
+// and desktop environments (X11 vs Wayland, window manager differences), so
+// these simply fail into the existing generic error message when the
+// command isn't installed, rather than pretending to be fully supported.
+async function runShell(command: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync(command, args, { timeout: SHELL_TIMEOUT_MS })
   return stdout.trim()
 }
 
@@ -43,25 +61,25 @@ export function desktopToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: 'get_battery_status',
-      description: "Get the user's laptop battery percentage and charging state (Windows only).",
+      description: "Get the user's laptop battery percentage and charging state.",
       inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'get_active_window_title',
       description:
-        "Get the title of whatever window the user currently has focused (Windows only). Often just shows Verity itself while they're actively typing to you.",
+        "Get the title (or, on macOS, the app name) of whatever window the user currently has focused. Often just shows Verity itself while they're actively typing to you.",
       inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'list_running_apps',
       description:
-        "List the user's currently open applications (window titles, Windows only) - useful for noticing what they're working on.",
+        "List the user's currently open applications - useful for noticing what they're working on. Includes window titles on Windows; app names only on macOS/Linux.",
       inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'set_system_volume',
       description:
-        "Nudge the user's system volume up/down a small amount, or toggle mute (Windows only, simulates the hardware volume keys - not exact percentages).",
+        "Nudge the user's system volume up/down a small amount, or toggle mute (not exact percentages).",
       inputSchema: {
         type: 'object',
         properties: {
@@ -128,41 +146,73 @@ export function desktopToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-async function getBatteryStatus(): Promise<string> {
-  if (process.platform !== 'win32') return 'Battery status is only implemented on Windows.'
-  try {
-    const stdout = await runPowerShell(
-      'Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1 -Property EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress'
-    )
-    if (!stdout) return 'No battery detected - likely a desktop.'
-    const data = JSON.parse(stdout) as { EstimatedChargeRemaining?: number; BatteryStatus?: number }
-    const statusMap: Record<number, string> = {
-      1: 'discharging',
-      2: 'plugged in',
-      3: 'fully charged',
-      6: 'charging',
-      7: 'charging',
-      8: 'charging (low)',
-      9: 'charging (critical)',
-      11: 'partially charged'
+const NO_BATTERY_MESSAGE = 'No battery detected - likely a desktop.'
+
+async function getBatteryStatusWindows(): Promise<string> {
+  const stdout = await runPowerShell(
+    'Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1 -Property EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress'
+  )
+  if (!stdout) return NO_BATTERY_MESSAGE
+  const data = JSON.parse(stdout) as { EstimatedChargeRemaining?: number; BatteryStatus?: number }
+  const statusMap: Record<number, string> = {
+    1: 'discharging',
+    2: 'plugged in',
+    3: 'fully charged',
+    6: 'charging',
+    7: 'charging',
+    8: 'charging (low)',
+    9: 'charging (critical)',
+    11: 'partially charged'
+  }
+  const state =
+    data.BatteryStatus !== undefined
+      ? (statusMap[data.BatteryStatus] ?? 'unknown state')
+      : 'unknown state'
+  return data.EstimatedChargeRemaining !== undefined
+    ? `${data.EstimatedChargeRemaining}% battery, ${state}.`
+    : `Battery status: ${state}.`
+}
+
+async function getBatteryStatusMac(): Promise<string> {
+  const stdout = await runShell('pmset', ['-g', 'batt'])
+  const match = stdout.match(/(\d+)%;\s*([a-zA-Z ]+);/)
+  if (!match) return NO_BATTERY_MESSAGE
+  return `${match[1]}% battery, ${match[2].trim()}.`
+}
+
+async function getBatteryStatusLinux(): Promise<string> {
+  for (const battery of ['BAT0', 'BAT1']) {
+    try {
+      const base = `/sys/class/power_supply/${battery}`
+      const [capacity, status] = await Promise.all([
+        readFile(`${base}/capacity`, 'utf8'),
+        readFile(`${base}/status`, 'utf8')
+      ])
+      return `${capacity.trim()}% battery, ${status.trim().toLowerCase()}.`
+    } catch {
+      // try the next battery id, or fall through to "no battery" below
     }
-    const state =
-      data.BatteryStatus !== undefined
-        ? (statusMap[data.BatteryStatus] ?? 'unknown state')
-        : 'unknown state'
-    return data.EstimatedChargeRemaining !== undefined
-      ? `${data.EstimatedChargeRemaining}% battery, ${state}.`
-      : `Battery status: ${state}.`
+  }
+  return NO_BATTERY_MESSAGE
+}
+
+async function getBatteryStatus(): Promise<string> {
+  try {
+    if (process.platform === 'win32') return await getBatteryStatusWindows()
+    if (process.platform === 'darwin') return await getBatteryStatusMac()
+    if (process.platform === 'linux') return await getBatteryStatusLinux()
+    return NO_BATTERY_MESSAGE
   } catch (err) {
     log.warn('desktop', 'get_battery_status failed', err)
-    return 'No battery detected - likely a desktop.'
+    return NO_BATTERY_MESSAGE
   }
 }
 
-async function getActiveWindowTitle(): Promise<string> {
-  if (process.platform !== 'win32') return 'Active window detection is only implemented on Windows.'
-  try {
-    const stdout = await runPowerShell(`
+const NO_WINDOW_TITLE_MESSAGE = '(no window title available)'
+const VERITY_FOCUSED_MESSAGE = "(you're currently focused on Verity itself)"
+
+async function getActiveWindowTitleWindows(): Promise<string> {
+  const stdout = await runPowerShell(`
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Text; public class VerityWin32 { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId); }'
 $h = [VerityWin32]::GetForegroundWindow()
 $sb = New-Object System.Text.StringBuilder 256
@@ -171,45 +221,133 @@ $procId = 0
 [VerityWin32]::GetWindowThreadProcessId($h, [ref]$procId) | Out-Null
 "$procId|$($sb.ToString())"
 `)
-    const sep = stdout.indexOf('|')
-    if (sep === -1) return '(no window title available)'
-    const pidStr = stdout.slice(0, sep)
-    const title = stdout.slice(sep + 1).trim()
-    if (Number(pidStr) === process.pid) return "(you're currently focused on Verity itself)"
-    return title || '(no window title available)'
+  const sep = stdout.indexOf('|')
+  if (sep === -1) return NO_WINDOW_TITLE_MESSAGE
+  const pidStr = stdout.slice(0, sep)
+  const title = stdout.slice(sep + 1).trim()
+  if (Number(pidStr) === process.pid) return VERITY_FOCUSED_MESSAGE
+  return title || NO_WINDOW_TITLE_MESSAGE
+}
+
+async function getActiveWindowTitleMac(): Promise<string> {
+  const stdout = await runOsascript(
+    'tell application "System Events" to get unix id of first process whose frontmost is true & "|" & (name of first process whose frontmost is true)'
+  )
+  const sep = stdout.indexOf('|')
+  if (sep === -1) return NO_WINDOW_TITLE_MESSAGE
+  const pidStr = stdout.slice(0, sep)
+  const name = stdout.slice(sep + 1).trim()
+  if (Number(pidStr) === process.pid) return VERITY_FOCUSED_MESSAGE
+  return name || NO_WINDOW_TITLE_MESSAGE
+}
+
+async function getActiveWindowTitleLinux(): Promise<string> {
+  const title = await runShell('xdotool', ['getactivewindow', 'getwindowname'])
+  return title || NO_WINDOW_TITLE_MESSAGE
+}
+
+async function getActiveWindowTitle(): Promise<string> {
+  try {
+    if (process.platform === 'win32') return await getActiveWindowTitleWindows()
+    if (process.platform === 'darwin') return await getActiveWindowTitleMac()
+    if (process.platform === 'linux') return await getActiveWindowTitleLinux()
+    return 'Active window detection is not supported on this platform.'
   } catch (err) {
     log.warn('desktop', 'get_active_window_title failed', err)
     return 'Could not determine the active window.'
   }
 }
 
+const NO_RUNNING_APPS_MESSAGE = '(no other windowed apps found)'
+
+async function listRunningAppsWindows(): Promise<string> {
+  const stdout = await runPowerShell(
+    `Get-Process | Where-Object { $_.MainWindowTitle -ne '' -and $_.Id -ne ${process.pid} } | Select-Object -First 30 ProcessName, MainWindowTitle | ForEach-Object { "$($_.ProcessName): $($_.MainWindowTitle)" }`
+  )
+  return stdout || NO_RUNNING_APPS_MESSAGE
+}
+
+async function listRunningAppsMac(): Promise<string> {
+  const stdout = await runOsascript(
+    'tell application "System Events" to get name of every process whose background only is false'
+  )
+  const names = stdout
+    .split(',')
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .slice(0, 30)
+  return names.length > 0 ? names.join('\n') : NO_RUNNING_APPS_MESSAGE
+}
+
+async function listRunningAppsLinux(): Promise<string> {
+  const stdout = await runShell('wmctrl', ['-l'])
+  const titles = stdout
+    .split('\n')
+    .map((line) => line.trim())
+    // wmctrl -l columns: window-id desktop host title... - title is
+    // everything from the 4th whitespace-separated field onward.
+    .map((line) => line.split(/\s+/).slice(3).join(' '))
+    .filter(Boolean)
+    .slice(0, 30)
+  return titles.length > 0 ? titles.join('\n') : NO_RUNNING_APPS_MESSAGE
+}
+
 async function listRunningApps(): Promise<string> {
-  if (process.platform !== 'win32') return 'Listing running apps is only implemented on Windows.'
   try {
-    const stdout = await runPowerShell(
-      `Get-Process | Where-Object { $_.MainWindowTitle -ne '' -and $_.Id -ne ${process.pid} } | Select-Object -First 30 ProcessName, MainWindowTitle | ForEach-Object { "$($_.ProcessName): $($_.MainWindowTitle)" }`
-    )
-    return stdout || '(no other windowed apps found)'
+    if (process.platform === 'win32') return await listRunningAppsWindows()
+    if (process.platform === 'darwin') return await listRunningAppsMac()
+    if (process.platform === 'linux') return await listRunningAppsLinux()
+    return 'Listing running apps is not supported on this platform.'
   } catch (err) {
     log.warn('desktop', 'list_running_apps failed', err)
     return 'Could not list running apps.'
   }
 }
 
-async function setSystemVolume(action: unknown, stepsInput: unknown): Promise<string> {
-  if (process.platform !== 'win32') return 'Volume control is only implemented on Windows.'
-  const steps = Math.max(1, Math.min(10, Number(stepsInput) || 2))
-  const vk = action === 'up' ? 0xaf : action === 'down' ? 0xae : action === 'mute' ? 0xad : null
-  if (vk === null) return 'action must be "up", "down", or "mute"'
-  const presses = action === 'mute' ? 1 : steps
-  try {
-    await runPowerShell(`
+type VolumeAction = 'up' | 'down' | 'mute'
+
+async function setSystemVolumeWindows(action: VolumeAction, presses: number): Promise<void> {
+  const vk = action === 'up' ? 0xaf : action === 'down' ? 0xae : 0xad
+  await runPowerShell(`
 Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class VerityVolume { [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo); }'
 for ($i = 0; $i -lt ${presses}; $i++) {
   [VerityVolume]::keybd_event(${vk}, 0, 0, [System.UIntPtr]::Zero)
   [VerityVolume]::keybd_event(${vk}, 0, 2, [System.UIntPtr]::Zero)
 }
 `)
+}
+
+async function setSystemVolumeMac(action: VolumeAction, steps: number): Promise<void> {
+  if (action === 'mute') {
+    const isMuted = await runOsascript('output muted of (get volume settings)')
+    await runOsascript(`set volume output muted ${isMuted === 'true' ? 'false' : 'true'}`)
+    return
+  }
+  const current = Number(await runOsascript('output volume of (get volume settings)'))
+  const delta = (action === 'up' ? 1 : -1) * steps * 10
+  const next = Math.max(0, Math.min(100, (Number.isFinite(current) ? current : 50) + delta))
+  await runOsascript(`set volume output volume ${next}`)
+}
+
+async function setSystemVolumeLinux(action: VolumeAction, steps: number): Promise<void> {
+  if (action === 'mute') {
+    await runShell('amixer', ['-q', 'set', 'Master', 'toggle'])
+    return
+  }
+  await runShell('amixer', ['-q', 'set', 'Master', `${steps * 10}%${action === 'up' ? '+' : '-'}`])
+}
+
+async function setSystemVolume(action: unknown, stepsInput: unknown): Promise<string> {
+  if (action !== 'up' && action !== 'down' && action !== 'mute') {
+    return 'action must be "up", "down", or "mute"'
+  }
+  const steps = Math.max(1, Math.min(10, Number(stepsInput) || 2))
+  const presses = action === 'mute' ? 1 : steps
+  try {
+    if (process.platform === 'win32') await setSystemVolumeWindows(action, presses)
+    else if (process.platform === 'darwin') await setSystemVolumeMac(action, steps)
+    else if (process.platform === 'linux') await setSystemVolumeLinux(action, steps)
+    else return 'Volume control is not supported on this platform.'
     return action === 'mute' ? 'Toggled mute.' : `Nudged volume ${action} (${presses}x).`
   } catch (err) {
     log.warn('desktop', 'set_system_volume failed', err)
