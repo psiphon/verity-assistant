@@ -3,6 +3,7 @@ import type {
   AppSettings,
   FacePackId,
   McpServerConfig,
+  McpServerStatus,
   MemoryEntry,
   ProviderId,
   RapportEvent,
@@ -34,6 +35,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [hotkeyError, setHotkeyError] = useState(false)
+  const [mcpStatuses, setMcpStatuses] = useState<McpServerStatus[]>([])
 
   useEffect(() => {
     window.verity.settings.get().then(setSettings)
@@ -43,10 +45,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     window.verity.memories.get().then(setMemories)
     window.verity.activity.get().then(setActivity)
     window.verity.reminders.get().then(setReminders)
+    window.verity.mcp.getStatuses().then(setMcpStatuses)
+    const offMcpStatuses = window.verity.mcp.onStatuses(setMcpStatuses)
     const load = (): void => setVoices(listVoices())
     load()
     window.speechSynthesis?.addEventListener('voiceschanged', load)
-    return () => window.speechSynthesis?.removeEventListener('voiceschanged', load)
+    return () => {
+      offMcpStatuses()
+      window.speechSynthesis?.removeEventListener('voiceschanged', load)
+    }
   }, [])
 
   async function handleResetRapport(): Promise<void> {
@@ -104,6 +111,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     update({ mcpServers: settings.mcpServers.map((s) => (s.id === id ? { ...s, ...patch } : s)) })
   }
 
+  function toggleServerTool(server: McpServerConfig, toolName: string, enabled: boolean): void {
+    const disabledTools = enabled
+      ? server.disabledTools.filter((t) => t !== toolName)
+      : [...server.disabledTools, toolName]
+    updateServer(server.id, { disabledTools })
+  }
+
   function addServer(): void {
     if (!settings) return
     const server: McpServerConfig = {
@@ -111,7 +125,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
       name: 'new-server',
       command: '',
       args: [],
-      enabled: true
+      enabled: true,
+      disabledTools: []
     }
     update({ mcpServers: [...settings.mcpServers, server] })
   }
@@ -526,45 +541,65 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <button onClick={addServer}>+ Add</button>
         </div>
         {settings.mcpServers.length === 0 && <p className="hint">No MCP servers configured.</p>}
-        {settings.mcpServers.map((server) => (
-          <div key={server.id} className="mcp-server-card">
-            <div className="mcp-server-card-header">
+        {settings.mcpServers.map((server) => {
+          const status = mcpStatuses.find((s) => s.id === server.id)
+          return (
+            <div key={server.id} className="mcp-server-card">
+              <div className="mcp-server-card-header">
+                <input
+                  type="text"
+                  value={server.name}
+                  placeholder="name"
+                  onChange={(e) => updateServer(server.id, { name: e.target.value })}
+                />
+                <label className="checkbox-inline">
+                  <input
+                    type="checkbox"
+                    checked={server.enabled}
+                    onChange={(e) => updateServer(server.id, { enabled: e.target.checked })}
+                  />
+                  on
+                </label>
+                <button onClick={() => removeServer(server.id)} aria-label="Remove server">
+                  🗑
+                </button>
+              </div>
+              <label className="mcp-field-label">Command</label>
               <input
                 type="text"
-                value={server.name}
-                placeholder="name"
-                onChange={(e) => updateServer(server.id, { name: e.target.value })}
+                value={server.command}
+                placeholder="command (e.g. npx)"
+                onChange={(e) => updateServer(server.id, { command: e.target.value })}
               />
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={server.enabled}
-                  onChange={(e) => updateServer(server.id, { enabled: e.target.checked })}
-                />
-                on
-              </label>
-              <button onClick={() => removeServer(server.id)} aria-label="Remove server">
-                🗑
-              </button>
+              <label className="mcp-field-label">Args</label>
+              <input
+                type="text"
+                value={server.args.join(' ')}
+                placeholder="args (space separated)"
+                onChange={(e) =>
+                  updateServer(server.id, { args: e.target.value.split(' ').filter(Boolean) })
+                }
+              />
+              {status && status.toolNames.length > 0 && (
+                <>
+                  <label className="mcp-field-label">Tools</label>
+                  <div className="mcp-tool-list">
+                    {status.toolNames.map((toolName) => (
+                      <label key={toolName} className="checkbox-inline">
+                        <input
+                          type="checkbox"
+                          checked={!server.disabledTools.includes(toolName)}
+                          onChange={(e) => toggleServerTool(server, toolName, e.target.checked)}
+                        />
+                        {toolName}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
-            <label className="mcp-field-label">Command</label>
-            <input
-              type="text"
-              value={server.command}
-              placeholder="command (e.g. npx)"
-              onChange={(e) => updateServer(server.id, { command: e.target.value })}
-            />
-            <label className="mcp-field-label">Args</label>
-            <input
-              type="text"
-              value={server.args.join(' ')}
-              placeholder="args (space separated)"
-              onChange={(e) =>
-                updateServer(server.id, { args: e.target.value.split(' ').filter(Boolean) })
-              }
-            />
-          </div>
-        ))}
+          )
+        })}
       </section>
 
       <section>

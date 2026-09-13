@@ -385,7 +385,16 @@ describe('SettingsPanel', () => {
     it('removes a server row', async () => {
       setup({
         settings: defaultSettings({
-          mcpServers: [{ id: 's1', name: 'my-server', command: 'npx', args: [], enabled: true }]
+          mcpServers: [
+            {
+              id: 's1',
+              name: 'my-server',
+              command: 'npx',
+              args: [],
+              enabled: true,
+              disabledTools: []
+            }
+          ]
         })
       })
       render(<SettingsPanel onClose={vi.fn()} />)
@@ -399,7 +408,16 @@ describe('SettingsPanel', () => {
     it('splits the args field on spaces into an array, normalizing repeated spaces', async () => {
       setup({
         settings: defaultSettings({
-          mcpServers: [{ id: 's1', name: 'my-server', command: 'npx', args: [], enabled: true }]
+          mcpServers: [
+            {
+              id: 's1',
+              name: 'my-server',
+              command: 'npx',
+              args: [],
+              enabled: true,
+              disabledTools: []
+            }
+          ]
         })
       })
       render(<SettingsPanel onClose={vi.fn()} />)
@@ -410,6 +428,37 @@ describe('SettingsPanel', () => {
       // this is exercising that normalization, not a literal echo.
       fireEvent.change(argsInput, { target: { value: '-y  thing' } })
       expect((argsInput as HTMLInputElement).value).toBe('-y thing')
+    })
+
+    it('shows a per-tool checklist once connected, and unchecking disables it', async () => {
+      const fake = setup({
+        settings: defaultSettings({
+          mcpServers: [
+            {
+              id: 's1',
+              name: 'my-server',
+              command: 'npx',
+              args: [],
+              enabled: true,
+              disabledTools: []
+            }
+          ]
+        }),
+        mcpStatuses: [
+          { id: 's1', name: 'my-server', connected: true, toolCount: 2, toolNames: ['a', 'b'] }
+        ]
+      })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('a')
+      const toolCheckbox = screen.getByLabelText('a') as HTMLInputElement
+      expect(toolCheckbox.checked).toBe(true)
+
+      fireEvent.click(toolCheckbox)
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => expect(fake.api.settings.set).toHaveBeenCalled())
+      const saved = vi.mocked(fake.api.settings.set).mock.calls[0][0]
+      expect(saved.mcpServers[0].disabledTools).toEqual(['a'])
     })
   })
 

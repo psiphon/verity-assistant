@@ -38,7 +38,12 @@ const BASE_ENV_KEYS = [
 interface Connection {
   config: McpServerConfig
   client: Client
+  /** LLM-visible tools - prefixed, with disabledTools already filtered out. */
   tools: ToolDefinition[]
+  /** Every tool name the server advertises (unprefixed, unfiltered) - kept
+   * separately so Settings can render a full enable/disable checklist even
+   * for tools currently turned off. */
+  allToolNames: string[]
   error?: string
 }
 
@@ -60,17 +65,22 @@ export class McpManager {
       })
       await client.connect(transport)
       const listed = await client.listTools()
-      const tools: ToolDefinition[] = listed.tools.map((t) => ({
-        name: `${TOOL_PREFIX}${config.id}__${t.name}`,
-        description: `[${config.name}] ${t.description ?? t.name}`,
-        inputSchema: t.inputSchema as Record<string, unknown>
-      }))
-      this.connections.set(config.id, { config, client, tools })
+      const allToolNames = listed.tools.map((t) => t.name)
+      const disabled = new Set(config.disabledTools ?? [])
+      const tools: ToolDefinition[] = listed.tools
+        .filter((t) => !disabled.has(t.name))
+        .map((t) => ({
+          name: `${TOOL_PREFIX}${config.id}__${t.name}`,
+          description: `[${config.name}] ${t.description ?? t.name}`,
+          inputSchema: t.inputSchema as Record<string, unknown>
+        }))
+      this.connections.set(config.id, { config, client, tools, allToolNames })
     } catch (err) {
       this.connections.set(config.id, {
         config,
         client,
         tools: [],
+        allToolNames: [],
         error: err instanceof Error ? err.message : String(err)
       })
     }
@@ -93,6 +103,7 @@ export class McpManager {
       name: c.config.name,
       connected: !c.error,
       toolCount: c.tools.length,
+      toolNames: c.allToolNames,
       error: c.error
     }))
   }

@@ -25,7 +25,14 @@ export function installDevMockVerityIfNeeded(): void {
       ollama: { apiKey: '', baseUrl: 'http://localhost:11434', model: 'llama3.1' }
     },
     mcpServers: [
-      { id: '1', name: 'example-fs', command: 'npx', args: ['-y', 'example-mcp'], enabled: false }
+      {
+        id: '1',
+        name: 'example-fs',
+        command: 'npx',
+        args: ['-y', 'example-mcp'],
+        enabled: false,
+        disabledTools: []
+      }
     ],
     ttsEnabled: true,
     ttsEngine: 'system',
@@ -45,7 +52,15 @@ export function installDevMockVerityIfNeeded(): void {
     hotkeyEnabled: true,
     hotkeyAccelerator: 'CommandOrControl+Shift+V'
   }
-  const statuses: McpServerStatus[] = []
+  const statuses: McpServerStatus[] = [
+    {
+      id: '1',
+      name: 'example-fs',
+      connected: false,
+      toolCount: 2,
+      toolNames: ['read_file', 'write_file']
+    }
+  ]
   let rapport: RapportState = { value: 100, tierLabel: 'Human Facade' }
   let rapportHistory: RapportEvent[] = []
   let memories: MemoryEntry[] = [

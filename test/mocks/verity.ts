@@ -62,6 +62,7 @@ export interface FakeVerityState {
   transcript: TranscriptEntry[]
   activity: ActivityEntry[]
   reminders: Reminder[]
+  mcpStatuses: McpServerStatus[]
 }
 
 export interface FakeVerity {
@@ -102,7 +103,8 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
     memories: overrides.memories ?? [],
     transcript: overrides.transcript ?? [],
     activity: overrides.activity ?? [],
-    reminders: overrides.reminders ?? []
+    reminders: overrides.reminders ?? [],
+    mcpStatuses: overrides.mcpStatuses ?? []
   }
 
   const api: Window['verity'] = {
@@ -166,8 +168,8 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       synthesize: vi.fn(async () => null)
     },
     mcp: {
-      getStatuses: vi.fn(async () => []),
-      reload: vi.fn(async () => []),
+      getStatuses: vi.fn(async () => state.mcpStatuses),
+      reload: vi.fn(async () => state.mcpStatuses),
       onStatuses: mcpStatuses.add
     },
     window: {

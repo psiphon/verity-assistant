@@ -48,6 +48,7 @@ function server(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
     command: 'npx',
     args: ['-y', 'thing'],
     enabled: true,
+    disabledTools: [],
     ...overrides
   }
 }
@@ -88,8 +89,29 @@ describe('McpManager', () => {
       }
     ])
     expect(mgr.getStatuses()).toEqual([
-      { id: 's1', name: 'my-server', connected: true, toolCount: 1, error: undefined }
+      {
+        id: 's1',
+        name: 'my-server',
+        connected: true,
+        toolCount: 1,
+        toolNames: ['do_thing'],
+        error: undefined
+      }
     ])
+  })
+
+  it('withholds a disabled tool from the LLM but still lists its name in status', async () => {
+    mockDefaults.listTools = async () => ({
+      tools: [
+        { name: 'do_thing', description: 'does a thing', inputSchema: {} },
+        { name: 'other_thing', description: 'does another thing', inputSchema: {} }
+      ]
+    })
+    const mgr = new McpManager()
+    await mgr.connectAll([server({ disabledTools: ['other_thing'] })])
+
+    expect(mgr.getTools().map((t) => t.name)).toEqual(['mcp__s1__do_thing'])
+    expect(mgr.getStatuses()[0].toolNames).toEqual(['do_thing', 'other_thing'])
   })
 
   it('falls back to the tool name as description when the server gives none', async () => {
@@ -108,7 +130,14 @@ describe('McpManager', () => {
 
     expect(mgr.getTools()).toEqual([])
     expect(mgr.getStatuses()).toEqual([
-      { id: 's1', name: 'my-server', connected: false, toolCount: 0, error: 'spawn failed' }
+      {
+        id: 's1',
+        name: 'my-server',
+        connected: false,
+        toolCount: 0,
+        toolNames: [],
+        error: 'spawn failed'
+      }
     ])
   })
 

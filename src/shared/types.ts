@@ -28,6 +28,9 @@ export interface McpServerConfig {
   args: string[]
   env?: Record<string, string>
   enabled: boolean
+  /** Unprefixed names of this server's own tools to withhold from the LLM,
+   * without disabling the whole server. */
+  disabledTools: string[]
 }
 
 export interface ProviderSettings {
@@ -149,5 +152,9 @@ export interface McpServerStatus {
   name: string
   connected: boolean
   toolCount: number
+  /** Every tool name the server advertises (unprefixed), regardless of
+   * whether it's currently disabled - lets Settings render a full toggle
+   * checklist, not just the currently-enabled subset. */
+  toolNames: string[]
   error?: string
 }

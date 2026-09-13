@@ -431,7 +431,9 @@ describe('settings:set', () => {
 describe('mcp:reload', () => {
   it('reconnects using the currently stored servers and returns statuses', async () => {
     setStoreSettings({
-      mcpServers: [{ id: 's1', name: 'x', command: 'npx', args: [], enabled: true }]
+      mcpServers: [
+        { id: 's1', name: 'x', command: 'npx', args: [], enabled: true, disabledTools: [] }
+      ]
     })
     McpManagerMock.instances[0].getStatuses.mockReturnValue([
       { id: 's1', name: 'x', connected: true, toolCount: 2 }
