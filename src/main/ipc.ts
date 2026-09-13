@@ -116,6 +116,19 @@ function flickerWindow(): void {
   tick()
 }
 
+let windowPositionSaveTimer: ReturnType<typeof setTimeout> | null = null
+const WINDOW_POSITION_SAVE_DEBOUNCE_MS = 300
+
+// A drag fires this on every pointermove - writing to disk that often would
+// be a lot of needless I/O for a value nothing reads until the next launch,
+// so only the position after movement settles actually gets persisted.
+function scheduleWindowPositionSave(x: number, y: number): void {
+  if (windowPositionSaveTimer) clearTimeout(windowPositionSaveTimer)
+  windowPositionSaveTimer = setTimeout(() => {
+    settingsStore.set({ windowX: x, windowY: y })
+  }, WINDOW_POSITION_SAVE_DEBOUNCE_MS)
+}
+
 export function registerIpcHandlers(): void {
   // The face is driven live by rapport (see faceAtlas.ts on the renderer
   // side), so every viewer needs to hear about a change the moment the
@@ -275,12 +288,15 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.on(IPC.windowSetPosition, (event, x: number, y: number) => {
+    const rx = Math.round(x)
+    const ry = Math.round(y)
     BrowserWindow.fromWebContents(event.sender)?.setBounds({
-      x: Math.round(x),
-      y: Math.round(y),
+      x: rx,
+      y: ry,
       width: WINDOW_SIZE.width,
       height: WINDOW_SIZE.height
     })
+    scheduleWindowPositionSave(rx, ry)
   })
 
   ipcMain.handle(IPC.rapportGet, () => {

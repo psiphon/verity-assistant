@@ -30,6 +30,8 @@ export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettin
     ambientEnabled: false,
     ambientMinMinutes: 10,
     ambientMaxMinutes: 30,
+    windowX: null,
+    windowY: null,
     ...overrides
   }
 }

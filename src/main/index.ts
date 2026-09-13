@@ -20,8 +20,15 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 let tray: Tray | null = null
 
 function createWindow(): BrowserWindow {
+  // Only restore a saved position once both coordinates are known (first
+  // run leaves them null) - otherwise let Electron pick its own default.
+  const savedX = settingsStore.get('windowX')
+  const savedY = settingsStore.get('windowY')
+  const position = savedX !== null && savedY !== null ? { x: savedX, y: savedY } : {}
+
   const win = new BrowserWindow({
     ...WINDOW_SIZE,
+    ...position,
     show: false,
     frame: false,
     transparent: true,

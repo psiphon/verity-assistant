@@ -26,7 +26,9 @@ const defaults: AppSettings = {
   memories: [],
   ambientEnabled: false,
   ambientMinMinutes: 10,
-  ambientMaxMinutes: 30
+  ambientMaxMinutes: 30,
+  windowX: null,
+  windowY: null
 }
 
 export const settingsStore = new Store<AppSettings>({

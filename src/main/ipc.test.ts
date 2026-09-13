@@ -110,6 +110,8 @@ function baseSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     ambientEnabled: false,
     ambientMinMinutes: 10,
     ambientMaxMinutes: 30,
+    windowX: null,
+    windowY: null,
     ...overrides
   }
 }
@@ -446,6 +448,24 @@ describe('window handlers', () => {
       y: 8,
       width: 320,
       height: 420
+    })
+  })
+
+  describe('position persistence', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    it('debounces the persisted position instead of writing on every pointermove', () => {
+      const handler = getOnHandler(IPC.windowSetPosition)
+      handler(fakeEvent(), 10, 10)
+      handler(fakeEvent(), 20, 20)
+      handler(fakeEvent(), 30, 30)
+
+      expect(settingsStore.store.windowX).toBeNull()
+
+      vi.advanceTimersByTime(300)
+      expect(settingsStore.store.windowX).toBe(30)
+      expect(settingsStore.store.windowY).toBe(30)
     })
   })
 })

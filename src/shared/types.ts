@@ -70,6 +70,11 @@ export interface AppSettings {
   /** Randomized interval range (minutes) between ambient check-ins. */
   ambientMinMinutes: number
   ambientMaxMinutes: number
+  /** Last dragged window position, so the widget reopens where it was left
+   * instead of recentering every launch. Null means "not set yet" (first
+   * run) - let Electron pick its own default position. */
+  windowX: number | null
+  windowY: number | null
 }
 
 /** Synthesized audio handed back from the main process over IPC. `data` is the

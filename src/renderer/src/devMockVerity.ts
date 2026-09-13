@@ -37,7 +37,9 @@ export function installDevMockVerityIfNeeded(): void {
     memories: [],
     ambientEnabled: false,
     ambientMinMinutes: 10,
-    ambientMaxMinutes: 30
+    ambientMaxMinutes: 30,
+    windowX: null,
+    windowY: null
   }
   const statuses: McpServerStatus[] = []
   let rapport: RapportState = { value: 100, tierLabel: 'Human Facade' }
