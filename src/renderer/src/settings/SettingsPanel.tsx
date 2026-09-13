@@ -432,19 +432,34 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         </div>
         {settings.mcpServers.length === 0 && <p className="hint">No MCP servers configured.</p>}
         {settings.mcpServers.map((server) => (
-          <div key={server.id} className="mcp-server-row">
-            <input
-              type="text"
-              value={server.name}
-              placeholder="name"
-              onChange={(e) => updateServer(server.id, { name: e.target.value })}
-            />
+          <div key={server.id} className="mcp-server-card">
+            <div className="mcp-server-card-header">
+              <input
+                type="text"
+                value={server.name}
+                placeholder="name"
+                onChange={(e) => updateServer(server.id, { name: e.target.value })}
+              />
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={server.enabled}
+                  onChange={(e) => updateServer(server.id, { enabled: e.target.checked })}
+                />
+                on
+              </label>
+              <button onClick={() => removeServer(server.id)} aria-label="Remove server">
+                🗑
+              </button>
+            </div>
+            <label className="mcp-field-label">Command</label>
             <input
               type="text"
               value={server.command}
               placeholder="command (e.g. npx)"
               onChange={(e) => updateServer(server.id, { command: e.target.value })}
             />
+            <label className="mcp-field-label">Args</label>
             <input
               type="text"
               value={server.args.join(' ')}
@@ -453,17 +468,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
                 updateServer(server.id, { args: e.target.value.split(' ').filter(Boolean) })
               }
             />
-            <label className="checkbox-inline">
-              <input
-                type="checkbox"
-                checked={server.enabled}
-                onChange={(e) => updateServer(server.id, { enabled: e.target.checked })}
-              />
-              on
-            </label>
-            <button onClick={() => removeServer(server.id)} aria-label="Remove server">
-              🗑
-            </button>
           </div>
         ))}
       </section>

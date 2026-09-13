@@ -253,16 +253,38 @@
   font-size: 11px;
 }
 
-.mcp-server-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto auto;
+/* Stacked (not a cramped single-row grid) - this settings form runs in the
+   same fixed 320px-wide window as the rest of the app, and three equal-width
+   text inputs plus a checkbox and a button never had room to be usable
+   there. Each field gets its own full-width line instead. */
+.mcp-server-card {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  align-items: center;
+  padding: 6px 8px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
 }
 
-.mcp-server-row input[type='text'] {
+.mcp-server-card input[type='text'] {
   width: 100%;
   min-width: 0;
+}
+
+.mcp-server-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-server-card-header input[type='text'] {
+  flex: 1;
+}
+
+.mcp-field-label {
+  font-size: 10px;
+  color: var(--verity-text-dim);
+  margin-top: 2px;
 }
 
 .checkbox-inline {
@@ -273,11 +295,12 @@
   white-space: nowrap;
 }
 
-.mcp-server-row button {
+.mcp-server-card-header button {
   background: transparent;
   border: none;
   cursor: pointer;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .hint {
