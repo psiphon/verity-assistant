@@ -28,7 +28,9 @@ const defaults: AppSettings = {
   ambientMinMinutes: 10,
   ambientMaxMinutes: 30,
   windowX: null,
-  windowY: null
+  windowY: null,
+  hotkeyEnabled: true,
+  hotkeyAccelerator: 'CommandOrControl+Shift+V'
 }
 
 export const settingsStore = new Store<AppSettings>({

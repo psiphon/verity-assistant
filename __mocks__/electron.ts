@@ -87,6 +87,11 @@ export const powerMonitor = {
   getSystemIdleTime: vi.fn(() => 0)
 }
 
+export const globalShortcut = {
+  register: vi.fn(() => true),
+  unregisterAll: vi.fn()
+}
+
 // Default: encryption unavailable, so encrypt/decrypt are identity and tests
 // see plaintext secrets round-trip unchanged. A test can flip
 // isEncryptionAvailable to true and stub the two string methods.

@@ -75,6 +75,11 @@ export interface AppSettings {
    * run) - let Electron pick its own default position. */
   windowX: number | null
   windowY: number | null
+  /** Global keyboard shortcut to show/hide the widget, on regardless of
+   * which app has focus - an Electron accelerator string (e.g.
+   * "CommandOrControl+Shift+V"). */
+  hotkeyEnabled: boolean
+  hotkeyAccelerator: string
 }
 
 /** Synthesized audio handed back from the main process over IPC. `data` is the

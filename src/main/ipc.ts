@@ -14,6 +14,7 @@ import { WINDOW_SIZE } from './windowConfig'
 import { getRapport, getTier, resetRapport, onRapportChanged, getRapportHistory } from './rapport'
 import { logActivity, getActivity, clearActivity } from './activity'
 import { getReminders, cancelReminder } from './reminders'
+import { applyHotkeySettings } from './hotkey'
 import { formatMemoriesForPrompt, getMemories, deleteMemory, clearMemories } from './memory'
 import {
   trimHistory,
@@ -144,14 +145,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.settingsSet, async (_e, settings: AppSettings) => {
     if (!isPlausibleSettings(settings)) {
       log.error('settings', 'Rejected a malformed settings payload')
-      return
+      return { hotkeyRegistered: true }
     }
     log.info('settings', `Settings saved (provider=${settings.activeProvider})`)
     settingsStore.set(encryptSettingsSecrets(settings))
     scheduleNextAmbientCheck()
+    const hotkeyRegistered = applyHotkeySettings()
     await mcp.connectAll(currentSettings().mcpServers)
     logMcpStatuses()
     getWindow()?.webContents.send(IPC.mcpStatuses, mcp.getStatuses())
+    return { hotkeyRegistered }
   })
 
   // Renderer-side TTS asks for audio here when the Fish Audio engine is

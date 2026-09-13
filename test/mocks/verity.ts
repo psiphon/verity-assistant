@@ -34,6 +34,8 @@ export function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettin
     ambientMaxMinutes: 30,
     windowX: null,
     windowY: null,
+    hotkeyEnabled: true,
+    hotkeyAccelerator: 'CommandOrControl+Shift+V',
     ...overrides
   }
 }
@@ -157,6 +159,7 @@ export function createFakeVerity(overrides: Partial<FakeVerityState> = {}): Fake
       get: vi.fn(async () => state.settings),
       set: vi.fn(async (s: AppSettings) => {
         state.settings = s
+        return { hotkeyRegistered: true }
       })
     },
     tts: {

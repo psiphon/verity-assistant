@@ -80,7 +80,8 @@ const api = {
   },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.settingsGet),
-    set: (settings: AppSettings): Promise<void> => ipcRenderer.invoke(IPC.settingsSet, settings)
+    set: (settings: AppSettings): Promise<{ hotkeyRegistered: boolean }> =>
+      ipcRenderer.invoke(IPC.settingsSet, settings)
   },
   tts: {
     /** Synthesize `text` with the configured Fish Audio server. Resolves to

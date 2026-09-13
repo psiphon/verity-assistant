@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, Tray, Menu, nativeImage, globalShortcut } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -6,6 +6,7 @@ import { registerIpcHandlers, initAgentBackend, startAmbientTimer } from './ipc'
 import { settingsStore } from './store'
 import { initLogger, log } from './logger'
 import { initReminders } from './reminders'
+import { applyHotkeySettings, toggleVisibility } from './hotkey'
 import { IPC } from '@shared/ipc'
 import { WINDOW_SIZE } from './windowConfig'
 
@@ -104,7 +105,7 @@ function createTray(win: BrowserWindow): void {
     Menu.buildFromTemplate([
       {
         label: 'Show / Hide',
-        click: () => (win.isVisible() ? win.hide() : win.show())
+        click: () => toggleVisibility(win)
       },
       {
         label: 'Settings',
@@ -127,7 +128,7 @@ function createTray(win: BrowserWindow): void {
       { label: 'Quit Verity', click: () => app.quit() }
     ])
   )
-  tray.on('click', () => (win.isVisible() ? win.hide() : win.show()))
+  tray.on('click', () => toggleVisibility(win))
 }
 
 process.on('uncaughtException', (err) => log.error('main', 'Uncaught exception', err))
@@ -148,10 +149,15 @@ app.whenReady().then(async () => {
 
   const win = createWindow()
   createTray(win)
+  applyHotkeySettings()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

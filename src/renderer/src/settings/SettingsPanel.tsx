@@ -33,6 +33,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   const [conversationCleared, setConversationCleared] = useState(false)
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [reminders, setReminders] = useState<Reminder[]>([])
+  const [hotkeyError, setHotkeyError] = useState(false)
 
   useEffect(() => {
     window.verity.settings.get().then(setSettings)
@@ -122,7 +123,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
   async function save(): Promise<void> {
     if (!settings) return
-    await window.verity.settings.set(settings)
+    const { hotkeyRegistered } = await window.verity.settings.set(settings)
+    if (!hotkeyRegistered) {
+      setHotkeyError(true)
+      return
+    }
     onClose()
   }
 
@@ -231,6 +236,39 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           Which set of expressions the floating head cycles through. It still switches on its own
           with her mood and your rapport - this only changes the artwork.
         </p>
+      </section>
+
+      <section>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.hotkeyEnabled}
+            onChange={(e) => update({ hotkeyEnabled: e.target.checked })}
+          />
+          Global hotkey to show/hide
+        </label>
+        {settings.hotkeyEnabled && (
+          <input
+            type="text"
+            value={settings.hotkeyAccelerator}
+            onChange={(e) => {
+              setHotkeyError(false)
+              update({ hotkeyAccelerator: e.target.value })
+            }}
+            placeholder="CommandOrControl+Shift+V"
+          />
+        )}
+        {hotkeyError ? (
+          <p className="hint">
+            Couldn&apos;t register that shortcut - it may already be in use by another app. Try a
+            different combination.
+          </p>
+        ) : (
+          <p className="hint">
+            Works even when another app is focused. Uses Electron accelerator syntax (e.g.
+            CommandOrControl+Shift+V).
+          </p>
+        )}
       </section>
 
       <section>

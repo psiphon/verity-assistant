@@ -51,7 +51,7 @@ vi.mock('./agent/loop', async (importOriginal) => {
   return { ...actual, runAgentTurn, buildSystemPrompt }
 })
 
-import { BrowserWindow, ipcMain, powerMonitor, safeStorage, shell } from 'electron'
+import { BrowserWindow, globalShortcut, ipcMain, powerMonitor, safeStorage, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AppSettings } from '@shared/types'
 import { STUCK_FALLBACK_TEXT } from './agent/loop'
@@ -114,6 +114,8 @@ function baseSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     ambientMaxMinutes: 30,
     windowX: null,
     windowY: null,
+    hotkeyEnabled: true,
+    hotkeyAccelerator: 'CommandOrControl+Shift+V',
     ...overrides
   }
 }
@@ -369,6 +371,19 @@ describe('settings:set', () => {
     expect(McpManagerMock.instances[0].connectAll).toHaveBeenCalledWith(newSettings.mcpServers)
     const win = BrowserWindowMock.instances[0]
     expect(win.webContents.send).toHaveBeenCalledWith(IPC.mcpStatuses, expect.anything())
+  })
+
+  it('re-registers the global hotkey and reports success', async () => {
+    const handler = getHandleHandler(IPC.settingsSet)
+    const result = await handler(fakeEvent(), baseSettings())
+    expect(result).toEqual({ hotkeyRegistered: true })
+  })
+
+  it('reports failure when the accelerator could not be registered', async () => {
+    vi.mocked(globalShortcut.register).mockReturnValueOnce(false)
+    const handler = getHandleHandler(IPC.settingsSet)
+    const result = await handler(fakeEvent(), baseSettings({ hotkeyAccelerator: 'Bogus+Key' }))
+    expect(result).toEqual({ hotkeyRegistered: false })
   })
 
   it('rejects a structurally malformed payload without persisting it', async () => {

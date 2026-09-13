@@ -41,7 +41,9 @@ export function installDevMockVerityIfNeeded(): void {
     ambientMinMinutes: 10,
     ambientMaxMinutes: 30,
     windowX: null,
-    windowY: null
+    windowY: null,
+    hotkeyEnabled: true,
+    hotkeyAccelerator: 'CommandOrControl+Shift+V'
   }
   const statuses: McpServerStatus[] = []
   let rapport: RapportState = { value: 100, tierLabel: 'Human Facade' }
@@ -170,7 +172,7 @@ export function installDevMockVerityIfNeeded(): void {
     },
     settings: {
       get: async () => settings,
-      set: async () => {}
+      set: async () => ({ hotkeyRegistered: true })
     },
     tts: {
       synthesize: async () => null

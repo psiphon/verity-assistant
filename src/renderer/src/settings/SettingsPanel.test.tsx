@@ -88,6 +88,27 @@ describe('SettingsPanel', () => {
     })
   })
 
+  describe('global hotkey', () => {
+    it('hides the accelerator field when disabled', async () => {
+      setup({ settings: defaultSettings({ hotkeyEnabled: false }) })
+      render(<SettingsPanel onClose={vi.fn()} />)
+      await screen.findByText('Settings')
+      expect(screen.queryByPlaceholderText('CommandOrControl+Shift+V')).not.toBeInTheDocument()
+    })
+
+    it('shows an error and keeps the panel open when registration fails', async () => {
+      const fake = setup()
+      vi.mocked(fake.api.settings.set).mockResolvedValueOnce({ hotkeyRegistered: false })
+      const onClose = vi.fn()
+      render(<SettingsPanel onClose={onClose} />)
+      await screen.findByText('Settings')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await screen.findByText(/already be in use/)
+      expect(onClose).not.toHaveBeenCalled()
+    })
+  })
+
   describe('ambient check-ins', () => {
     it('hides the interval inputs until enabled, then shows the saved defaults', async () => {
       setup()
