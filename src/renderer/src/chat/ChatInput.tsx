@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { unlockAudio } from '../audio/sfx'
+import { useSpeechRecognition } from './useSpeech'
 
 interface ChatInputProps {
   disabled: boolean
@@ -9,6 +10,9 @@ interface ChatInputProps {
 
 export function ChatInput({ disabled, onSend }: ChatInputProps): React.JSX.Element {
   const [value, setValue] = useState('')
+  const speech = useSpeechRecognition((text) =>
+    setValue((prev) => (prev ? `${prev} ${text}` : text))
+  )
 
   function submit(): void {
     if (!value.trim()) return
@@ -23,7 +27,19 @@ export function ChatInput({ disabled, onSend }: ChatInputProps): React.JSX.Eleme
   }
 
   return (
-    <div className="chat-input">
+    <div className={`chat-input${speech.supported ? ' chat-input-has-mic' : ''}`}>
+      {speech.supported && (
+        <button
+          type="button"
+          className="chat-input-mic"
+          onClick={() => (speech.listening ? speech.stop() : speech.start())}
+          disabled={disabled}
+          aria-label={speech.listening ? 'Stop listening' : 'Speak instead of typing'}
+          aria-pressed={speech.listening}
+        >
+          {speech.listening ? '●' : '🎤'}
+        </button>
+      )}
       <input
         type="text"
         value={value}

@@ -610,7 +610,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           name a city). The file tools (read/search) send whatever they read to your configured LLM
           provider, and are blocked from unprompted &quot;ambient&quot; check-ins. With the Fish
           Audio voice engine, each spoken reply&apos;s text is sent to the TTS server URL you
-          configure (local by default).
+          configure (local by default). The microphone button (when shown) sends your speech to the
+          browser&apos;s built-in speech-recognition service to transcribe it - only while
+          you&apos;re actively using it, never in the background.
         </p>
       </section>
 

@@ -125,6 +125,27 @@
   outline: none;
 }
 
+.chat-input-has-mic input {
+  padding-left: 36px;
+}
+
+.chat-input-mic {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  bottom: 3px;
+  width: 26px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-input-mic[aria-pressed='true'] {
+  color: #e08a8a;
+}
+
 .chat-input input:focus {
   border-color: var(--verity-accent);
 }

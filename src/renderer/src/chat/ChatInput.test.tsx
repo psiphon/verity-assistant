@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../audio/sfx')
@@ -71,5 +71,60 @@ describe('ChatInput', () => {
       target: { value: 'x' }
     })
     expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+  })
+
+  describe('voice input', () => {
+    class FakeSpeechRecognition extends EventTarget {
+      static instances: FakeSpeechRecognition[] = []
+      lang = ''
+      interimResults = false
+      maxAlternatives = 1
+      onresult: ((event: { results: { 0: { transcript: string } }[] }) => void) | null = null
+      onerror: (() => void) | null = null
+      onend: (() => void) | null = null
+      start = vi.fn()
+      stop = vi.fn(() => this.onend?.())
+      constructor() {
+        super()
+        FakeSpeechRecognition.instances.push(this)
+      }
+    }
+
+    afterEach(() => {
+      FakeSpeechRecognition.instances.length = 0
+      delete window.SpeechRecognition
+    })
+
+    it('hides the mic button when the browser has no speech recognition support', () => {
+      render(<ChatInput disabled={false} onSend={vi.fn()} />)
+      expect(screen.queryByLabelText('Speak instead of typing')).not.toBeInTheDocument()
+    })
+
+    it('starts listening on click and fills the input from the transcript', () => {
+      window.SpeechRecognition = FakeSpeechRecognition as unknown as typeof window.SpeechRecognition
+      render(<ChatInput disabled={false} onSend={vi.fn()} />)
+
+      fireEvent.click(screen.getByLabelText('Speak instead of typing'))
+      const recognition = FakeSpeechRecognition.instances[0]
+      expect(recognition.start).toHaveBeenCalled()
+      expect(screen.getByLabelText('Stop listening')).toBeInTheDocument()
+
+      act(() => {
+        recognition.onresult?.({ results: [{ 0: { transcript: 'hello there' } }] })
+      })
+      const input = screen.getByPlaceholderText('Say something to Verity...') as HTMLInputElement
+      expect(input.value).toBe('hello there')
+    })
+
+    it('clicking again while listening stops it', () => {
+      window.SpeechRecognition = FakeSpeechRecognition as unknown as typeof window.SpeechRecognition
+      render(<ChatInput disabled={false} onSend={vi.fn()} />)
+
+      fireEvent.click(screen.getByLabelText('Speak instead of typing'))
+      fireEvent.click(screen.getByLabelText('Stop listening'))
+
+      expect(FakeSpeechRecognition.instances[0].stop).toHaveBeenCalled()
+      expect(screen.getByLabelText('Speak instead of typing')).toBeInTheDocument()
+    })
   })
 })
